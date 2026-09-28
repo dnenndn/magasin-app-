@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The backend connector typically runs on your own local network (same
+  building as the SQL Server) without a public HTTPS certificate. Android
+  blocks plain http:// by default since API 28, so this allows cleartext
+  traffic app-wide for this internal tool.
+
+  Android's network security config can only allow-list exact hostnames/IPs,
+  not IP ranges - since the server's LAN address varies per deployment, a
+  base-config allow is the practical option here. If you later put the
+  backend behind a real domain with HTTPS (recommended once this leaves a
+  trusted LAN), delete this file and the android:networkSecurityConfig /
+  android:usesCleartextTraffic lines in AndroidManifest.xml.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

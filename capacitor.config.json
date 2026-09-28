@@ -1,0 +1,9 @@
+{
+  "appId": "com.gmao.stockapp",
+  "appName": "Stock GMAO",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "http",
+    "cleartext": true
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "653597970544",
+    "project_id": "gmao-magasin",
+    "storage_bucket": "gmao-magasin.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:653597970544:android:86e297d0857572b9eea4b5",
+        "android_client_info": {
+          "package_name": "com.gmao.stockapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBPPi-4a2EsVvlny6xYLT_M7DFltEeyucs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

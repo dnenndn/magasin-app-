@@ -1,0 +1,1678 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Stock GMAO</title>
+
+<!-- Android / Chrome install -->
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#16211c" />
+
+<!-- iOS / Safari install (Safari ignores the manifest for these bits) -->
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Stock GMAO" />
+<link rel="apple-touch-icon" href="icons/icon-180.png" />
+
+<link rel="icon" type="image/png" sizes="32x32" href="icons/icon-32.png" />
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
+<style>
+  :root {
+    --ink: #221f1c;
+    --paper: #f7f5f2;
+    --panel: #ffffff;
+    --panel-2: #f1ede8;
+    --line: #e7e1da;
+    --accent: #b8451f;
+    --accent-ink: #ffffff;
+    --success: #2f8f57;
+    --success-ink: #ffffff;
+    --warn: #b8721f;
+    --warn-bg: rgba(184, 114, 31, 0.10);
+    --warn-border: rgba(184, 114, 31, 0.35);
+    --warn-icon-bg: rgba(184, 114, 31, 0.20);
+    --danger: #b83f36;
+    --danger-ink: #ffffff;
+    --muted: #746b64;
+    --radius: 14px;
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ink: #f2f0ed;
+      --paper: #0e0e10;
+      --panel: #1a1a1d;
+      --panel-2: #222225;
+      --line: #2b2a2c;
+      --accent: #d1592f;
+      --accent-ink: #fff7f2;
+      --success: #3fae6a;
+      --success-ink: #08170f;
+      --warn: #e0a458;
+      --warn-bg: rgba(224, 164, 88, 0.14);
+      --warn-border: rgba(224, 164, 88, 0.40);
+      --warn-icon-bg: rgba(224, 164, 88, 0.24);
+      --danger: #dd6259;
+      --danger-ink: #200604;
+      --muted: #9b9691;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ink: #f2f0ed;
+    --paper: #0e0e10;
+    --panel: #1a1a1d;
+    --panel-2: #222225;
+    --line: #2b2a2c;
+    --accent: #d1592f;
+    --accent-ink: #fff7f2;
+    --success: #3fae6a;
+    --success-ink: #08170f;
+    --warn: #e0a458;
+    --warn-bg: rgba(224, 164, 88, 0.14);
+    --warn-border: rgba(224, 164, 88, 0.40);
+    --warn-icon-bg: rgba(224, 164, 88, 0.24);
+    --danger: #dd6259;
+    --danger-ink: #200604;
+    --muted: #9b9691;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif;
+    padding-top: var(--safe-top);
+    padding-bottom: var(--safe-bottom);
+  }
+  header {
+    position: sticky;
+    top: 0;
+    padding: calc(var(--safe-top) + 14px) 16px 14px;
+    margin-top: calc(-1 * var(--safe-top));
+    background: var(--panel);
+    color: var(--ink);
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    z-index: 10;
+  }
+  header .brand-group { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  header .logo-mark {
+    width: 38px; height: 38px; flex: none;
+    border-radius: 10px;
+    background: var(--accent);
+    color: var(--accent-ink);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.25rem;
+  }
+  header .brand-text { min-width: 0; }
+  header .brand { font-weight: 700; letter-spacing: 0.2px; font-size: 1.02rem; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  header .tagline { font-size: 0.72rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  header .header-actions { display: flex; align-items: center; gap: 2px; flex: none; }
+  header .icon-btn {
+    background: none; border: none; color: var(--ink);
+    font-size: 1.1rem; position: relative; padding: 6px 8px; line-height: 1;
+    border-radius: 8px;
+  }
+  header .who { font-size: 0.72rem; color: var(--muted); white-space: nowrap; }
+  main { padding: 16px; padding-bottom: 96px; max-width: 720px; margin: 0 auto; }
+  nav.tabs {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    display: flex;
+    background: var(--panel);
+    border-top: 1px solid var(--line);
+    padding-bottom: var(--safe-bottom);
+    z-index: 10;
+  }
+  nav.tabs button {
+    flex: 1;
+    background: none;
+    border: none;
+    color: var(--muted);
+    padding: 10px 4px 12px;
+    font-size: 0.72rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+  nav.tabs button .icon { font-size: 1.25rem; }
+  nav.tabs button.active { color: var(--accent); font-weight: 600; }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 12px;
+  }
+  h1 { font-size: 1.3rem; margin: 4px 0 16px; }
+  h2 { font-size: 1rem; margin: 0 0 10px; }
+  label { display: block; font-size: 0.8rem; color: var(--muted); margin: 10px 0 4px; }
+  input, select {
+    width: 100%;
+    padding: 11px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    background: var(--paper);
+    color: var(--ink);
+    font-size: 1rem;
+  }
+  button.primary {
+    width: 100%;
+    padding: 13px;
+    border-radius: 8px;
+    border: none;
+    background: var(--accent);
+    color: var(--accent-ink);
+    font-size: 1rem;
+    font-weight: 600;
+    margin-top: 14px;
+  }
+  button.primary:disabled { opacity: 0.5; }
+  button.ghost {
+    background: none;
+    border: 1px solid var(--line);
+    color: var(--ink);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 0.85rem;
+  }
+  .article-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--line);
+    gap: 10px;
+  }
+  .article-row:last-child { border-bottom: none; }
+  .article-row .name { font-weight: 600; font-size: 0.92rem; }
+  .article-row .code { font-size: 0.78rem; color: var(--muted); }
+  .stock-pill {
+    font-size: 0.78rem;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    white-space: nowrap;
+  }
+  .stock-pill.low { color: var(--danger); border-color: var(--danger); }
+  .line-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .line-item .line-name { flex: 1; font-size: 0.9rem; }
+  .line-item input[type=number] { width: 84px; }
+  .muted { color: var(--muted); font-size: 0.85rem; }
+  .error { color: var(--danger); font-size: 0.85rem; margin-top: 8px; }
+  .success { color: var(--success); font-size: 0.9rem; margin-top: 8px; }
+  .empty { text-align: center; color: var(--muted); padding: 30px 10px; }
+  .segmented { display: flex; gap: 6px; margin-top: 4px; }
+  .segmented button {
+    flex: 1;
+    padding: 9px;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    background: var(--paper);
+    color: var(--ink);
+    font-size: 0.82rem;
+  }
+  .segmented button.selected { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .accordion-detail {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+  }
+  .commande-row.expanded { background: var(--paper); }
+  #install-banner {
+    display: none;
+    position: fixed;
+    left: 0; right: 0; top: var(--safe-top);
+    z-index: 20;
+    background: var(--accent);
+    color: var(--accent-ink);
+    padding: 10px 14px;
+    font-size: 0.82rem;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  #install-banner.show { display: flex; }
+  #install-banner button {
+    background: rgba(0,0,0,0.15);
+    border: none;
+    color: inherit;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 0.78rem;
+    white-space: nowrap;
+  }
+  #install-banner .close { background: none; padding: 6px; }
+
+  #toast {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 30;
+    display: flex;
+    justify-content: center;
+    padding-top: calc(var(--safe-top) + 10px);
+    pointer-events: none;
+  }
+  #toast .bubble {
+    background: var(--accent);
+    color: var(--accent-ink);
+    padding: 12px 20px;
+    border-radius: 999px;
+    font-size: 0.88rem;
+    font-weight: 600;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.25);
+    transform: translateY(-140%);
+    transition: transform 0.35s cubic-bezier(.34,1.56,.64,1);
+    max-width: 90vw;
+    text-align: center;
+  }
+  #toast .bubble.error { background: var(--danger); color: #fff; }
+  #toast.show .bubble { transform: translateY(0); }
+
+  /* ---- Accueil (home) ---- */
+  .badge-dot {
+    position: absolute; top: -1px; right: 2px;
+    background: var(--danger); color: var(--danger-ink);
+    border-radius: 999px; font-size: 0.62rem; font-weight: 700;
+    padding: 1px 5px; line-height: 1.25; min-width: 15px; text-align: center;
+  }
+  .greeting-card { margin-bottom: 16px; }
+  .greeting-hello { font-size: 1.35rem; font-weight: 700; margin: 2px 0 2px; }
+  .greeting-role { color: var(--muted); font-size: 0.88rem; }
+  .section-head {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin: 20px 0 10px;
+  }
+  .section-head h2 { margin: 0; font-size: 1.02rem; }
+  .section-head a { color: var(--accent); font-size: 0.82rem; text-decoration: none; font-weight: 600; }
+
+  .pending-card {
+    background: var(--warn-bg);
+    border: 1px solid var(--warn-border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    cursor: pointer;
+  }
+  .pending-card .pending-head { display: flex; align-items: center; gap: 12px; }
+  .pending-card .pending-icon {
+    width: 36px; height: 36px; flex: none; border-radius: 50%;
+    background: var(--warn-icon-bg);
+    color: var(--warn);
+    display: flex; align-items: center; justify-content: center; font-size: 1.1rem;
+  }
+  .pending-card .pending-title { font-weight: 700; font-size: 0.95rem; }
+  .pending-card .pending-sub { font-size: 0.78rem; color: var(--muted); }
+  .pending-card .chevron { margin-left: auto; color: var(--muted); font-size: 1.1rem; }
+  .pending-card .pending-line {
+    display: flex; justify-content: space-between; gap: 10px;
+    padding: 9px 0 0; margin-top: 9px;
+    border-top: 1px solid var(--warn-border);
+    font-size: 0.85rem;
+  }
+  .pending-card .pending-line .pl-ref { font-weight: 600; }
+  .pending-card .pending-line .pl-when { color: var(--muted); font-size: 0.78rem; white-space: nowrap; }
+
+  .quick-actions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .quick-tile {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 16px 8px;
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+    text-align: center;
+    color: var(--ink);
+  }
+  .quick-tile .qt-icon { font-size: 1.5rem; }
+  .quick-tile .qt-label { font-size: 0.8rem; font-weight: 700; line-height: 1.2; }
+  .quick-tile .qt-sub { font-size: 0.68rem; color: var(--muted); line-height: 1.2; }
+  .quick-tile.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .quick-tile.primary .qt-sub { color: var(--accent-ink); opacity: 0.75; }
+
+  .movement-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .movement-row:last-child { border-bottom: none; }
+  .movement-row .mv-icon {
+    width: 38px; height: 38px; flex: none; border-radius: 10px;
+    background: var(--panel-2);
+    display: flex; align-items: center; justify-content: center; font-size: 1.05rem;
+  }
+  .movement-row .mv-name { font-weight: 700; font-size: 0.88rem; }
+  .movement-row .mv-sub { font-size: 0.76rem; color: var(--muted); }
+  .movement-row .mv-when { font-size: 0.76rem; color: var(--muted); white-space: nowrap; margin-left: auto; text-align: right; }
+
+  .status-pill {
+    font-size: 0.72rem; font-weight: 700;
+    padding: 4px 10px; border-radius: 999px; white-space: nowrap;
+  }
+  .status-pill.approved { background: var(--success); color: var(--success-ink); }
+  .status-pill.pending { background: var(--warn-bg); color: var(--warn); border: 1px solid var(--warn-border); }
+  .status-pill.rejected { background: var(--danger); color: var(--danger-ink); }
+
+  /* ---- Loading screen (startup splash) ------------------------------- */
+  #loading-screen {
+    position: fixed; inset: 0; z-index: 9999;
+    display: flex; align-items: center; justify-content: center;
+    background: #f7f5f2;
+    transition: opacity 0.4s ease, visibility 0.4s ease;
+  }
+  #loading-screen.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+  .loading-inner { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .loading-logo {
+    width: 132px; height: auto; object-fit: contain;
+    filter: drop-shadow(0 6px 18px rgba(58,26,18,0.18));
+    margin-bottom: 22px;
+    animation: loading-pop 0.6s ease both;
+  }
+  .loading-title {
+    color: #3a1a12; font-weight: 800; font-size: 1.5rem; letter-spacing: 0.08em;
+    animation: loading-fade-up 0.6s ease 0.1s both;
+  }
+  .loading-subtitle {
+    color: #d98a5e; font-weight: 600; font-size: 0.85rem; letter-spacing: 0.04em;
+    margin-top: 4px;
+    animation: loading-fade-up 0.6s ease 0.2s both;
+  }
+  .loading-spinner {
+    display: flex; gap: 6px; margin-top: 28px;
+    animation: loading-fade-up 0.6s ease 0.3s both;
+  }
+  .loading-spinner span {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #c45a2a;
+    animation: loading-bounce 1s ease-in-out infinite;
+  }
+  .loading-spinner span:nth-child(2) { animation-delay: 0.15s; }
+  .loading-spinner span:nth-child(3) { animation-delay: 0.3s; }
+  @keyframes loading-pop {
+    from { opacity: 0; transform: scale(0.85); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  @keyframes loading-fade-up {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes loading-bounce {
+    0%, 80%, 100% { transform: translateY(0); opacity: 0.5; }
+    40% { transform: translateY(-8px); opacity: 1; }
+  }
+
+</style>
+</head>
+<body>
+
+<div id="loading-screen">
+  <div class="loading-inner">
+    <img src="assets/logo-splash.png" alt="Ideal Brique" class="loading-logo" />
+    <div class="loading-title">IDEAL BRIQUE</div>
+    <div class="loading-subtitle">Gestion de Stock</div>
+    <div class="loading-spinner"><span></span><span></span><span></span></div>
+  </div>
+</div>
+
+<div id="install-banner">
+  <span id="install-banner-text"></span>
+  <span style="display:flex;gap:6px">
+    <button id="install-banner-action"></button>
+    <button class="close" id="install-banner-close">✕</button>
+  </span>
+</div>
+<div id="toast"><div class="bubble"></div></div>
+<div id="app"></div>
+
+<!--
+  Loaded locally (not via node_modules import, which can't resolve in a
+  plain WebView with no bundler). Order matters: capacitor.js builds the
+  full Capacitor object on top of what the native Android bridge already
+  injected, and push-notifications.js needs that in place before it can
+  register itself as window.Capacitor.Plugins.PushNotifications. Both are
+  harmless no-ops outside the native app (e.g. testing in a browser).
+-->
+<script src="vendor/capacitor.js"></script>
+<script src="vendor/push-notifications.js"></script>
+
+<script>
+(function () {
+  // ---- Config -------------------------------------------------------
+  // Point this at wherever you deploy the backend/ connector service.
+  // Also editable in-app from the login screen (⚙ Adresse du serveur) —
+  // useful on a real device where there's no browser console to set it from.
+  function getApiBase() {
+    return window.localStorage.getItem('gmao_api_base') || 'http://localhost:4000/api';
+  }
+
+  // Must match backend/src/roles.js exactly - only used here to decide
+  // which tabs to show; the backend is the real enforcement point.
+  const ADMIN_ROLES = ['Administrateur'];
+  const MANAGER_ROLES = ['Administrateur', 'Responsable Méthode', 'Responsable Magasin', 'Magasinier'];
+  const isManager = () => state.user && MANAGER_ROLES.includes(state.user.fonction);
+  const isAdmin = () => state.user && ADMIN_ROLES.includes(state.user.fonction);
+
+  // ---- Tiny state / storage helpers ----------------------------------
+  const state = {
+    token: null,
+    user: null,
+    tab: 'accueil',
+    theme: null,
+    articles: [],
+    search: '',
+    selectedArticle: null,
+    bsmLines: [],
+    receptionCommande: null,
+    receptionLines: [],
+    error: '',
+    notice: ''
+  };
+
+  function loadSession() {
+    try {
+      const raw = localStorage.getItem('gmao_session');
+      if (raw) {
+        const s = JSON.parse(raw);
+        state.token = s.token;
+        state.user = s.user;
+      }
+    } catch (e) {}
+  }
+  function saveSession() {
+    localStorage.setItem('gmao_session', JSON.stringify({ token: state.token, user: state.user }));
+  }
+  function clearSession() {
+    localStorage.removeItem('gmao_session');
+    state.token = null;
+    state.user = null;
+  }
+
+  // ---- Theme (dark/light) ----------------------------------------------
+  // 'dark' or 'light' persisted explicitly; if the person never chose one,
+  // we don't force anything - the CSS's prefers-color-scheme media query
+  // already follows the OS setting on its own.
+  function loadTheme() {
+    try {
+      state.theme = localStorage.getItem('gmao_theme') || null;
+    } catch (e) { state.theme = null; }
+    applyTheme();
+  }
+  function applyTheme() {
+    if (state.theme === 'dark' || state.theme === 'light') {
+      document.documentElement.setAttribute('data-theme', state.theme);
+    } else {
+      document.documentElement.removeAttribute('data-theme');
+    }
+  }
+  function toggleTheme() {
+    // First tap flips away from whatever is currently showing, regardless
+    // of whether that came from an explicit choice or the OS default.
+    const currentlyDark = state.theme
+      ? state.theme === 'dark'
+      : window.matchMedia('(prefers-color-scheme: dark)').matches;
+    state.theme = currentlyDark ? 'light' : 'dark';
+    try { localStorage.setItem('gmao_theme', state.theme); } catch (e) {}
+    applyTheme();
+    render();
+  }
+
+  async function api(path, options = {}) {
+    const res = await fetch(getApiBase() + path, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(state.token ? { Authorization: 'Bearer ' + state.token } : {}),
+        ...(options.headers || {})
+      },
+      body: options.body ? JSON.stringify(options.body) : undefined
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Request failed');
+    return data;
+  }
+
+  // ---- Rendering -------------------------------------------------------
+  const app = document.getElementById('app');
+
+  function render() {
+    if (!state.token) return renderLogin();
+    const tabs = [
+      tabButton('accueil', '🏠', 'Accueil'),
+      tabButton('stock', '📦', 'Stock'),
+      tabButton('bsm', '📤', 'Sortie'),
+      tabButton('brm', '↩️', 'Retour')
+    ];
+    if (isManager()) {
+      tabs.splice(4, 0, tabButton('reception', '📥', 'Réception'));
+      tabs.push(tabButton('validation', '✅', 'Valider'));
+      tabs.push(tabButton('historique', '🕓', 'Historique'));
+    }
+    if (isAdmin()) {
+      tabs.push(tabButton('users', '👤', 'Utilisateurs'));
+    }
+    app.innerHTML = `
+      <header>
+        <div class="brand-group">
+          <div class="logo-mark">🏠</div>
+          <div class="brand-text">
+            <div class="brand">Stock GMAO</div>
+            <div class="tagline">Gestion de stock &amp; GMAO</div>
+          </div>
+        </div>
+        <div class="header-actions">
+          <button class="icon-btn" id="theme-toggle" title="Changer le thème">${state.theme === 'dark' ? '☀️' : '🌙'}</button>
+          <button class="icon-btn" id="bell" title="Notifications">
+            🔔<span id="bell-badge" class="badge-dot" style="display:none"></span>
+          </button>
+          <button class="icon-btn" id="logout" title="Déconnexion">🚪</button>
+        </div>
+      </header>
+      <main id="main"></main>
+      <nav class="tabs">${tabs.join('')}</nav>
+    `;
+    document.getElementById('logout').onclick = (e) => { e.preventDefault(); clearSession(); render(); };
+    document.getElementById('bell').onclick = openNotifications;
+    document.getElementById('theme-toggle').onclick = toggleTheme;
+    document.querySelectorAll('nav.tabs button').forEach((b) => {
+      b.onclick = () => { state.tab = b.dataset.tab; state.error = ''; state.notice = ''; renderTab(); };
+    });
+    renderTab();
+    refreshBellBadge();
+  }
+
+  function tabButton(id, icon, label) {
+    return `<button data-tab="${id}" class="${state.tab === id ? 'active' : ''}">
+      <span class="icon">${icon}</span>${label}
+    </button>`;
+  }
+
+  function renderTab() {
+    document.querySelectorAll('nav.tabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === state.tab));
+    if (state.tab === 'accueil') return renderAccueil();
+    if (state.tab === 'stock') return renderStock();
+    if (state.tab === 'bsm') return renderBsm();
+    if (state.tab === 'reception') return renderReception();
+    if (state.tab === 'brm') return renderBrm();
+    if (state.tab === 'validation') return renderValidation();
+    if (state.tab === 'historique') return renderHistorique();
+    if (state.tab === 'users') return renderUsers();
+  }
+
+  function renderLogin() {
+    app.innerHTML = `
+      <main style="padding-top:60px">
+        <div class="card">
+          <h1>Stock GMAO</h1>
+          <label>Identifiant</label>
+          <input id="login" autocomplete="username" />
+          <label>Mot de passe</label>
+          <input id="password" type="password" autocomplete="current-password" />
+          <button class="primary" id="login-btn">Se connecter</button>
+          <div class="error" id="login-error"></div>
+        </div>
+        <div class="card">
+          <button class="ghost" id="toggle-server" style="width:100%">⚙ Adresse du serveur</button>
+          <div id="server-box" style="display:none">
+            <label>URL de l'API</label>
+            <input id="server-url" placeholder="http://192.168.1.50:4000/api" value="${escapeHtml(getApiBase())}" />
+            <button class="primary" id="save-server">Enregistrer</button>
+            <div class="success" id="server-saved"></div>
+          </div>
+        </div>
+      </main>
+    `;
+    document.getElementById('login-btn').onclick = doLogin;
+    document.getElementById('password').addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin(); });
+    document.getElementById('toggle-server').onclick = () => {
+      const box = document.getElementById('server-box');
+      box.style.display = box.style.display === 'none' ? 'block' : 'none';
+    };
+    document.getElementById('save-server').onclick = () => {
+      const url = document.getElementById('server-url').value.trim().replace(/\/+$/, '');
+      if (url) {
+        localStorage.setItem('gmao_api_base', url);
+        document.getElementById('server-saved').textContent = 'Enregistré.';
+      }
+    };
+  }
+
+  async function doLogin() {
+    const login = document.getElementById('login').value.trim();
+    const password = document.getElementById('password').value;
+    const errBox = document.getElementById('login-error');
+    errBox.textContent = '';
+    try {
+      const data = await api('/auth/login', { method: 'POST', body: { login, password } });
+      state.token = data.token;
+      state.user = data.user;
+      saveSession();
+      render();
+      registerPushNotifications();
+    } catch (e) {
+      errBox.textContent = e.message;
+    }
+  }
+
+  // ---- Accueil (home) ---------------------------------------------------
+  function timeAgo(dateStr) {
+    const diffMs = Date.now() - new Date(dateStr).getTime();
+    const mins = Math.floor(diffMs / 60000);
+    if (mins < 1) return "À l'instant";
+    if (mins < 60) return `Il y a ${mins} min`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `Il y a ${hours} h`;
+    const days = Math.floor(hours / 24);
+    if (days < 7) return `Il y a ${days} j`;
+    return new Date(dateStr).toLocaleDateString('fr-FR');
+  }
+
+  function statusLabel(status) {
+    if (status === 'approved') return 'Approuvé';
+    if (status === 'rejected') return 'Rejeté';
+    return 'En attente';
+  }
+
+  function movementRowHtml(r) {
+    return `
+      <div class="movement-row">
+        <span class="mv-icon">${r.kind === 'bsm' ? '📤' : '↩️'}</span>
+        <div style="flex:1;min-width:0">
+          <div class="mv-name">${escapeHtml(r.ref)}</div>
+          <div class="mv-sub">${escapeHtml(r.detail || '')}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+          <span class="status-pill ${r.status}">${statusLabel(r.status)}</span>
+          <span class="mv-when">${new Date(r.date).toLocaleDateString('fr-FR')}</span>
+        </div>
+      </div>
+    `;
+  }
+
+  async function renderAccueil() {
+    const main = document.getElementById('main');
+    main.innerHTML = `
+      <div class="greeting-card">
+        <div class="greeting-hello">Bonjour, ${escapeHtml(state.user.login)}</div>
+        <div class="greeting-role">${escapeHtml(state.user.fonction || '')}</div>
+      </div>
+      <div id="accueil-pending"></div>
+      <div class="section-head"><h2>Actions rapides</h2></div>
+      <div class="quick-actions">
+        <button type="button" class="quick-tile primary" data-tab="bsm">
+          <span class="qt-icon">📤</span>
+          <span class="qt-label">Sortie de stock</span>
+          <span class="qt-sub">Créer un BSM</span>
+        </button>
+        <button type="button" class="quick-tile" data-tab="brm">
+          <span class="qt-icon">↩️</span>
+          <span class="qt-label">Retour magasin</span>
+          <span class="qt-sub">Créer un BRM</span>
+        </button>
+        <button type="button" class="quick-tile" data-tab="stock">
+          <span class="qt-icon">🔍</span>
+          <span class="qt-label">Rechercher</span>
+          <span class="qt-sub">Un article</span>
+        </button>
+      </div>
+      <div class="section-head">
+        <h2>Derniers mouvements</h2>
+        <a href="#" id="movements-see-all">Tout voir ›</a>
+      </div>
+      <div class="card" id="accueil-movements"><div class="empty">Chargement…</div></div>
+    `;
+    document.querySelectorAll('.quick-tile').forEach((btn) => {
+      btn.onclick = () => { state.tab = btn.dataset.tab; state.error = ''; state.notice = ''; renderTab(); };
+    });
+    document.getElementById('movements-see-all').onclick = (e) => { e.preventDefault(); openMovementsModal(); };
+
+    if (isManager()) loadAccueilPending();
+    loadAccueilMovements();
+  }
+
+  async function loadAccueilPending() {
+    const box = document.getElementById('accueil-pending');
+    if (!box) return;
+    try {
+      const [bsms, brms] = await Promise.all([api('/bsm/pending'), api('/brm/pending')]);
+      const items = [
+        ...bsms.map((b) => ({
+          ref: b.n_ot ? `OT ${escapeHtml(b.n_ot)}` : `BSM-${String(b.id).padStart(4, '0')}`,
+          sub: 'Sortie de stock', date: b.created_at
+        })),
+        ...brms.map((b) => ({
+          ref: `BRM-${String(b.id).padStart(4, '0')}`,
+          sub: b.type_retour_label || 'Retour magasin', date: b.created_at
+        }))
+      ];
+      items.sort((a, b) => new Date(b.date) - new Date(a.date));
+      if (items.length === 0) { box.innerHTML = ''; return; }
+      const top = items.slice(0, 2);
+      box.innerHTML = `
+        <div class="pending-card" id="pending-card-link">
+          <div class="pending-head">
+            <span class="pending-icon">🕐</span>
+            <div>
+              <div class="pending-title">${items.length} demande${items.length > 1 ? 's' : ''} en attente</div>
+              <div class="pending-sub">En attente d'approbation par le responsable</div>
+            </div>
+            <span class="chevron">›</span>
+          </div>
+          ${top.map((it) => `
+            <div class="pending-line">
+              <span class="pl-ref">${it.ref} — ${escapeHtml(it.sub)}</span>
+              <span class="pl-when">${timeAgo(it.date)}</span>
+            </div>
+          `).join('')}
+        </div>
+      `;
+      document.getElementById('pending-card-link').onclick = () => { state.tab = 'validation'; state.error = ''; state.notice = ''; renderTab(); };
+    } catch (e) {
+      box.innerHTML = '';
+    }
+  }
+
+  async function loadAccueilMovements() {
+    const box = document.getElementById('accueil-movements');
+    if (!box) return;
+    try {
+      const rows = await api('/movements/mine');
+      state.accueilMovements = rows;
+      if (rows.length === 0) { box.innerHTML = '<div class="empty">Aucun mouvement pour le moment</div>'; return; }
+      box.innerHTML = rows.slice(0, 6).map(movementRowHtml).join('');
+    } catch (e) {
+      box.innerHTML = `<div class="error">${escapeHtml(e.message)}</div>`;
+    }
+  }
+
+  function openMovementsModal() {
+    const rows = state.accueilMovements || [];
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:40;display:flex;align-items:flex-end';
+    overlay.innerHTML = `
+      <div style="background:var(--panel);width:100%;max-height:75vh;overflow-y:auto;border-radius:16px 16px 0 0;padding:16px;padding-bottom:calc(16px + var(--safe-bottom))">
+        <h2 style="margin-top:0">Mes mouvements</h2>
+        ${rows.length === 0 ? '<div class="empty">Aucun mouvement pour le moment</div>' : rows.map(movementRowHtml).join('')}
+        <button class="ghost" id="close-movements" style="width:100%;margin-top:12px">Fermer</button>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    overlay.querySelector('#close-movements').onclick = () => overlay.remove();
+    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  }
+
+  // ---- Stock tab ---------------------------------------------------
+  async function renderStock() {
+    const main = document.getElementById('main');
+    main.innerHTML = `
+      <div class="card">
+        <label>Rechercher un article</label>
+        <input id="search" placeholder="Désignation, code, référence…" value="${escapeHtml(state.search)}" />
+      </div>
+      <div class="card" id="results"><div class="empty">Tapez pour rechercher…</div></div>
+    `;
+    const input = document.getElementById('search');
+    input.oninput = debounce(async () => {
+      state.search = input.value;
+      await loadArticles();
+    }, 300);
+    if (state.search) loadArticles();
+  }
+
+  async function loadArticles() {
+    const results = document.getElementById('results');
+    try {
+      const rows = await api('/articles?search=' + encodeURIComponent(state.search));
+      state.articles = rows;
+      if (rows.length === 0) {
+        results.innerHTML = '<div class="empty">Aucun article trouvé</div>';
+        return;
+      }
+      results.innerHTML = rows.map(articleRow).join('');
+    } catch (e) {
+      results.innerHTML = `<div class="error">${escapeHtml(e.message)}</div>`;
+    }
+  }
+
+  function articleRow(a) {
+    const total = (a.stock_neuf || 0) + (a.stock_use || 0);
+    const low = a.stock_securite != null && total <= a.stock_securite;
+    return `
+      <div class="article-row">
+        <div>
+          <div class="name">${escapeHtml(a.designation)}</div>
+          <div class="code">${escapeHtml(a.code_article || '')} ${a.unite ? '· ' + escapeHtml(a.unite) : ''}</div>
+        </div>
+        <span class="stock-pill ${low ? 'low' : ''}">${total} ${low ? '⚠' : ''}</span>
+      </div>
+    `;
+  }
+
+  // ---- BSM (issue) tab -----------------------------------------------
+  async function renderBsm() {
+    const main = document.getElementById('main');
+    main.innerHTML = `
+      <div class="card">
+        <h2>Sortie de stock (BSM)</h2>
+        <label>Réceptionniste / intervenant</label>
+        <select id="intervenant"><option>Chargement…</option></select>
+        <label>N° OT (optionnel)</label>
+        <input id="n_ot" placeholder="OT-1234" />
+        <label>Type de stock</label>
+        <div class="segmented" id="type_stock">
+          <button data-v="neuf" class="selected">Neuf</button>
+          <button data-v="use">Usagé</button>
+          <button data-v="rebute">Rebut</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Articles</h2>
+        <label>Ajouter un article</label>
+        <input id="article-search" placeholder="Chercher un article…" />
+        <div id="article-suggestions"></div>
+        <div id="lines"></div>
+        <button class="primary" id="submit-bsm">Valider la sortie</button>
+        <div class="error" id="bsm-error"></div>
+        <div class="success" id="bsm-success"></div>
+      </div>
+    `;
+    loadSelect('intervenant', '/reference-data/intervenants', 'nom');
+    wireTypeSegmented('type_stock');
+    wireArticlePicker('article-search', 'article-suggestions', (art) => addLine(state.bsmLines, art, 'lines'));
+    renderLines('lines', state.bsmLines);
+    document.getElementById('submit-bsm').onclick = submitBsm;
+  }
+
+  async function submitBsm() {
+    const errBox = document.getElementById('bsm-error');
+    const okBox = document.getElementById('bsm-success');
+    errBox.textContent = ''; okBox.textContent = '';
+    const id_receptionniste = Number(document.getElementById('intervenant').value);
+    const n_ot = document.getElementById('n_ot').value.trim() || null;
+    const type_stock = document.querySelector('#type_stock button.selected').dataset.v;
+
+    if (!id_receptionniste || state.bsmLines.length === 0) {
+      errBox.textContent = 'Sélectionnez un intervenant et au moins un article.';
+      return;
+    }
+    try {
+      const result = await api('/bsm', {
+        method: 'POST',
+        body: {
+          id_receptionniste, n_ot, type_stock,
+          lines: state.bsmLines.map((l) => ({ id_article: l.id, quantite: l.qty }))
+        }
+      });
+      okBox.textContent = 'Sortie enregistrée.';
+      showToast(result.pending ? '⏳ Sortie enregistrée, en attente de validation' : '✓ Sortie validée avec succès');
+      state.bsmLines = [];
+      renderLines('lines', state.bsmLines);
+    } catch (e) {
+      errBox.textContent = e.message;
+    }
+  }
+
+  // ---- Reception tab ---------------------------------------------------
+  async function renderReception() {
+    const main = document.getElementById('main');
+    main.innerHTML = `
+      <div class="card">
+        <h2>Bons de commande en attente</h2>
+        <div id="open-commandes"><div class="empty">Chargement…</div></div>
+      </div>
+    `;
+    try {
+      const commandes = await api('/reception/commandes/open');
+      state.openCommandes = commandes;
+      const box = document.getElementById('open-commandes');
+      if (commandes.length === 0) {
+        box.innerHTML = '<div class="empty">Aucun bon en attente</div>';
+        return;
+      }
+      box.innerHTML = commandes.map((c) => `
+        <div class="commande-row article-row" data-id="${c.id}" style="cursor:pointer">
+          <div>
+            <div class="name">${escapeHtml(c.fournisseur)}</div>
+            <div class="code">${c.n_commande ? 'N° ' + escapeHtml(String(c.n_commande)) + ' · ' : ''}${new Date(c.date_commande).toLocaleDateString()}</div>
+          </div>
+        </div>
+        <div class="accordion-detail" id="detail-${c.id}"></div>
+      `).join('');
+      box.querySelectorAll('.commande-row').forEach((row) => {
+        row.onclick = () => toggleCommande(Number(row.dataset.id));
+      });
+    } catch (e) {
+      document.getElementById('open-commandes').innerHTML = `<div class="error">${escapeHtml(e.message)}</div>`;
+    }
+  }
+
+  async function toggleCommande(idCommande) {
+    const detail = document.getElementById(`detail-${idCommande}`);
+    const row = document.querySelector(`.commande-row[data-id="${idCommande}"]`);
+    const alreadyOpen = detail.style.maxHeight && detail.style.maxHeight !== '0px';
+
+    // Collapse whatever else is open first - only one order expanded at a time.
+    document.querySelectorAll('.accordion-detail').forEach((d) => { d.style.maxHeight = '0px'; });
+    document.querySelectorAll('.commande-row').forEach((r) => r.classList.remove('expanded'));
+
+    if (alreadyOpen) return; // tapping an open row just closes it
+
+    row.classList.add('expanded');
+    const commande = state.openCommandes.find((c) => c.id === idCommande);
+    await loadCommandeLines(idCommande, commande, detail);
+    // Measure after content is in place so the slide animates to the right height.
+    detail.style.maxHeight = detail.scrollHeight + 'px';
+  }
+
+  async function loadCommandeLines(idCommande, commande, detail) {
+    state.receptionCommande = idCommande;
+    detail.innerHTML = `
+      <div style="padding:14px 4px 4px">
+        <div id="reception-header-${idCommande}" class="muted" style="margin-bottom:10px"></div>
+        <div id="reception-lines-${idCommande}"><div class="empty">Chargement…</div></div>
+        <button class="primary" id="submit-reception-${idCommande}">Valider la réception</button>
+        <div class="error" id="reception-error-${idCommande}"></div>
+        <div class="success" id="reception-success-${idCommande}"></div>
+      </div>
+    `;
+    const headerBox = document.getElementById(`reception-header-${idCommande}`);
+    headerBox.innerHTML = commande ? `
+      <strong style="color:var(--ink)">${escapeHtml(commande.fournisseur)}</strong><br>
+      ${commande.n_commande ? 'Bon N° ' + escapeHtml(String(commande.n_commande)) + ' · ' : ''}
+      commandé le ${new Date(commande.date_commande).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
+    ` : '';
+    const box = document.getElementById(`reception-lines-${idCommande}`);
+    try {
+      const lines = await api(`/reception/commandes/${idCommande}/lines`);
+      state.receptionLines = lines.map((l) => ({ ...l, qt_saisie: Math.max(0, l.qt_commande - l.qt_recu) }));
+      const remainingCount = state.receptionLines.filter((l) => l.qt_commande > l.qt_recu).length;
+      headerBox.innerHTML += `<br><span class="muted">${state.receptionLines.length} article(s) au total · ${remainingCount} pas encore reçu(s)</span>`;
+      box.innerHTML = state.receptionLines.map((l, i) => `
+        <div class="line-item">
+          <div class="line-name">${escapeHtml(l.designation)}<br><span class="muted">${escapeHtml(l.code_article || '')} · commandé ${l.qt_commande} · reçu ${l.qt_recu}</span></div>
+          <input type="number" min="0" step="0.01" value="${l.qt_saisie}" data-idx="${i}" class="recv-qty" />
+        </div>
+      `).join('');
+      box.querySelectorAll('.recv-qty').forEach((inp) => {
+        inp.oninput = () => {
+          state.receptionLines[Number(inp.dataset.idx)].qt_saisie = Number(inp.value);
+          // Content height changed - keep the slide container sized to fit.
+          detail.style.maxHeight = detail.scrollHeight + 'px';
+        };
+      });
+      document.getElementById(`submit-reception-${idCommande}`).onclick = () => submitReception(idCommande, detail);
+      // Re-measure now that real content replaced the loading spinner.
+      detail.style.maxHeight = detail.scrollHeight + 'px';
+    } catch (e) {
+      box.innerHTML = `<div class="error">${escapeHtml(e.message)}</div>`;
+      detail.style.maxHeight = detail.scrollHeight + 'px';
+    }
+  }
+
+  async function submitReception(idCommande, detail) {
+    const errBox = document.getElementById(`reception-error-${idCommande}`);
+    const okBox = document.getElementById(`reception-success-${idCommande}`);
+    errBox.textContent = ''; okBox.textContent = '';
+    const lines = state.receptionLines
+      .filter((l) => l.qt_saisie > 0)
+      .map((l) => ({ id_article: l.id_article, id_da: l.id_da, qt_recu: l.qt_saisie, qt_bon_etat: l.qt_saisie, qt_mauvais_etat: 0 }));
+    if (lines.length === 0) {
+      errBox.textContent = 'Saisissez au moins une quantité reçue.';
+      return;
+    }
+    try {
+      await api('/reception', { method: 'POST', body: { id_commande: idCommande, lines } });
+      okBox.textContent = 'Réception enregistrée.';
+      showToast('✓ Réception validée avec succès');
+      renderReception();
+    } catch (e) {
+      errBox.textContent = e.message;
+      detail.style.maxHeight = detail.scrollHeight + 'px';
+    }
+  }
+
+  // ---- BRM (return) tab -----------------------------------------------
+  async function renderBrm() {
+    const main = document.getElementById('main');
+    main.innerHTML = `
+      <div class="card">
+        <h2>Retour magasin (BRM)</h2>
+        <p class="muted">Choisissez la sortie (BSM) à partir de laquelle créer ce retour.</p>
+        <div id="brm-bsm-list"><div class="empty">Chargement…</div></div>
+      </div>
+    `;
+    loadBrmSourceList();
+  }
+
+  async function loadBrmSourceList() {
+    const box = document.getElementById('brm-bsm-list');
+    try {
+      const bsms = await api('/bsm/mine');
+      state.brmSourceOptions = bsms;
+      if (bsms.length === 0) {
+        box.innerHTML = '<div class="empty">Aucune sortie avec du matériel encore retournable.</div>';
+        return;
+      }
+      box.innerHTML = bsms.map((b) => `
+        <div class="commande-row article-row" data-id="${b.id}" style="cursor:pointer">
+          <div>
+            <div class="name">BSM #${b.id} · ${escapeHtml(b.type_stock || '')}${b.n_ot ? ' · OT ' + escapeHtml(b.n_ot) : ''}</div>
+            <div class="code">${new Date(b.date_bsm).toLocaleDateString('fr-FR')} · ${b.lines.length} article(s) retournable(s)</div>
+          </div>
+        </div>
+        <div class="accordion-detail" id="brm-detail-${b.id}"></div>
+      `).join('');
+      box.querySelectorAll('.commande-row').forEach((row) => {
+        row.onclick = () => toggleBrmSource(Number(row.dataset.id));
+      });
+    } catch (e) {
+      box.innerHTML = `<div class="error">${escapeHtml(e.message)}</div>`;
+    }
+  }
+
+  function toggleBrmSource(idBsm) {
+    const detail = document.getElementById(`brm-detail-${idBsm}`);
+    const row = document.querySelector(`#brm-bsm-list .commande-row[data-id="${idBsm}"]`);
+    const alreadyOpen = detail.style.maxHeight && detail.style.maxHeight !== '0px';
+
+    // Only one source expanded at a time, same as the Réception list.
+    document.querySelectorAll('#brm-bsm-list .accordion-detail').forEach((d) => { d.style.maxHeight = '0px'; });
+    document.querySelectorAll('#brm-bsm-list .commande-row').forEach((r) => r.classList.remove('expanded'));
+
+    if (alreadyOpen) return;
+
+    row.classList.add('expanded');
+    selectBrmSource(idBsm, detail);
+    detail.style.maxHeight = detail.scrollHeight + 'px';
+  }
+
+  function selectBrmSource(idBsm, detail) {
+    const bsm = state.brmSourceOptions.find((b) => b.id === idBsm);
+    if (!bsm) return;
+    state.brmSource = bsm;
+    state.brmReturnLines = bsm.lines.map((l) => ({
+      id_article: l.id_article, name: l.designation, code: l.code_article, max: l.restant, qty: l.restant
+    }));
+
+    detail.innerHTML = `
+      <div style="padding:14px 4px 4px">
+        <label>Motif du retour</label>
+        <select id="type_retour-${idBsm}"><option>Chargement…</option></select>
+        <label>Type de stock</label>
+        <div class="segmented" id="brm_type_stock-${idBsm}">
+          <button data-v="neuf">Neuf</button>
+          <button data-v="use">Usagé</button>
+          <button data-v="rebute">Rebut</button>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px">
+          <h2 style="margin:0">Articles à retourner</h2>
+          <button class="ghost" id="brm-return-all-${idBsm}">Tout retourner</button>
+        </div>
+        <div id="brm-return-lines-${idBsm}"></div>
+        <button class="primary" id="submit-brm-${idBsm}">Valider le retour</button>
+        <div class="error" id="brm-error-${idBsm}"></div>
+        <div class="success" id="brm-success-${idBsm}"></div>
+      </div>
+    `;
+    loadSelect(`type_retour-${idBsm}`, '/reference-data/return-reasons', 'label', 'code');
+    wireTypeSegmented(`brm_type_stock-${idBsm}`);
+    // Default the condition to match what was issued - still changeable,
+    // since something issued "Neuf" might come back "Usé".
+    const defaultCol = { Neuf: 'neuf', Usé: 'use', Rebuté: 'rebute' }[bsm.type_stock] || 'neuf';
+    document.querySelectorAll(`#brm_type_stock-${idBsm} button`).forEach((b) => b.classList.toggle('selected', b.dataset.v === defaultCol));
+
+    renderBrmReturnLines(idBsm, detail);
+    document.getElementById(`brm-return-all-${idBsm}`).onclick = () => {
+      state.brmReturnLines.forEach((l) => { l.qty = l.max; });
+      renderBrmReturnLines(idBsm, detail);
+    };
+    document.getElementById(`submit-brm-${idBsm}`).onclick = () => submitBrm(idBsm, detail);
+  }
+
+  function renderBrmReturnLines(idBsm, detail) {
+    const box = document.getElementById(`brm-return-lines-${idBsm}`);
+    box.innerHTML = state.brmReturnLines.map((l, i) => `
+      <div class="line-item">
+        <div class="line-name">${escapeHtml(l.name)}<br><span class="muted">${escapeHtml(l.code || '')} · sorti : ${l.max}</span></div>
+        <input type="number" min="0" max="${l.max}" step="0.01" value="${l.qty}" data-idx="${i}" class="brm-return-qty" />
+      </div>
+    `).join('');
+    box.querySelectorAll('.brm-return-qty').forEach((inp) => {
+      inp.oninput = () => {
+        const line = state.brmReturnLines[Number(inp.dataset.idx)];
+        let v = Number(inp.value);
+        if (v > line.max) v = line.max;
+        if (v < 0) v = 0;
+        line.qty = v;
+      };
+    });
+    // Re-measure so the slide container keeps fitting its content.
+    detail.style.maxHeight = detail.scrollHeight + 'px';
+  }
+
+  async function submitBrm(idBsm, detail) {
+    const errBox = document.getElementById(`brm-error-${idBsm}`);
+    const okBox = document.getElementById(`brm-success-${idBsm}`);
+    errBox.textContent = ''; okBox.textContent = '';
+    const type_retour = Number(document.getElementById(`type_retour-${idBsm}`).value);
+    const type_stock = document.querySelector(`#brm_type_stock-${idBsm} button.selected`).dataset.v;
+    const lines = state.brmReturnLines
+      .filter((l) => l.qty > 0)
+      .map((l) => ({ id_article: l.id_article, quantite: l.qty }));
+
+    if (!type_retour || lines.length === 0) {
+      errBox.textContent = 'Choisissez un motif de retour et au moins un article avec une quantité à retourner.';
+      detail.style.maxHeight = detail.scrollHeight + 'px';
+      return;
+    }
+    try {
+      const result = await api('/brm', {
+        method: 'POST',
+        body: { type_retour, type_stock, n_bsm: state.brmSource.id, lines }
+      });
+      okBox.textContent = 'Retour enregistré.';
+      showToast(result.pending ? '⏳ Retour enregistré, en attente de validation' : '✓ Retour validé avec succès');
+      renderBrm(); // back to the source list, refreshed with updated remaining quantities
+    } catch (e) {
+      errBox.textContent = e.message;
+      detail.style.maxHeight = detail.scrollHeight + 'px';
+    }
+  }
+
+  // ---- Notifications ---------------------------------------------------
+  async function refreshBellBadge() {
+    const badge = document.getElementById('bell-badge');
+    if (!badge) return;
+    try {
+      const { count } = await api('/notifications/unread-count');
+      badge.style.display = count > 0 ? 'inline-block' : 'none';
+      badge.textContent = count > 9 ? '9+' : String(count);
+    } catch (e) { /* silent - non-critical */ }
+  }
+
+  async function openNotifications() {
+    let list;
+    try {
+      list = await api('/notifications');
+    } catch (e) {
+      showToast(e.message, true);
+      return;
+    }
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:40;display:flex;align-items:flex-end';
+    overlay.innerHTML = `
+      <div style="background:var(--panel);width:100%;max-height:75vh;overflow-y:auto;border-radius:16px 16px 0 0;padding:16px;padding-bottom:calc(16px + var(--safe-bottom))">
+        <h2 style="margin-top:0">Notifications</h2>
+        ${list.length === 0 ? '<div class="empty">Aucune notification</div>' : list.map((n) => `
+          <div class="line-item" style="align-items:flex-start">
+            <div class="line-name">
+              <strong>${escapeHtml(n.message)}</strong><br>
+              <span class="muted">${new Date(n.created_at).toLocaleString('fr-FR')}</span>
+            </div>
+            ${!n.read_at ? '<span class="stock-pill low">nouveau</span>' : ''}
+          </div>
+        `).join('')}
+        <button class="ghost" id="close-notifs" style="width:100%;margin-top:12px">Fermer</button>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    overlay.querySelector('#close-notifs').onclick = () => overlay.remove();
+    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+    try {
+      await api('/notifications/mark-read', { method: 'POST' });
+      refreshBellBadge();
+    } catch (e) { /* silent */ }
+  }
+
+  // Registers this device's push token with the backend. No-op outside the
+  // native app (Capacitor isn't present in a plain browser) or if the
+  // person declines the permission prompt.
+  async function registerPushNotifications() {
+    if (!window.Capacitor?.isNativePlatform?.()) return;
+    const plugin = window.Capacitor.Plugins?.PushNotifications;
+    if (!plugin) {
+      console.warn('PushNotifications plugin not found on window.Capacitor.Plugins - check vendor/capacitor.js and vendor/push-notifications.js are both loading.');
+      return;
+    }
+
+    try {
+      const perm = await plugin.requestPermissions();
+      if (perm.receive !== 'granted') return;
+
+      // Listeners MUST be attached before calling register() - if the
+      // native side reports the token before anyone's listening for it
+      // (which happens often, it's fast), the event is lost for good.
+      plugin.addListener('registration', async (token) => {
+        console.log('Push token received, registering with backend…');
+        try {
+          await api('/notifications/register-token', {
+            method: 'POST',
+            body: { token: token.value, platform: 'android' }
+          });
+          console.log('Push token registered with backend successfully.');
+        } catch (e) { console.warn('Failed to register push token:', e.message); }
+      });
+      plugin.addListener('registrationError', (err) => console.warn('Push registration error:', err));
+      plugin.addListener('pushNotificationReceived', (notification) => {
+        showToast(notification.title || notification.body || 'Nouvelle notification');
+        refreshBellBadge();
+      });
+
+      await plugin.register();
+      console.log('plugin.register() called.');
+    } catch (e) {
+      console.warn('Push notifications unavailable:', e.message);
+    }
+  }
+
+  // ---- Validation tab (managers) ---------------------------------------
+  async function renderValidation() {
+    const main = document.getElementById('main');
+    main.innerHTML = `
+      <div class="card"><h2>Sorties (BSM) en attente</h2><div id="pending-bsm"><div class="empty">Chargement…</div></div></div>
+      <div class="card"><h2>Retours (BRM) en attente</h2><div id="pending-brm"><div class="empty">Chargement…</div></div></div>
+    `;
+    // Fire both requests at once instead of waiting for BSM to finish before
+    // starting BRM - halves the wait since they don't depend on each other.
+    loadPendingBsm();
+    loadPendingBrm();
+  }
+
+  async function loadPendingBsm() {
+    try {
+      const bsms = await api('/bsm/pending');
+      const box = document.getElementById('pending-bsm');
+      box.innerHTML = bsms.length === 0 ? '<div class="empty">Rien en attente</div>' : bsms.map((b) => `
+        <div class="line-item" style="align-items:flex-start">
+          <div class="line-name">
+            Demande #${b.id} · ${escapeHtml(b.type_stock || '')}<br>
+            <span class="muted">${escapeHtml(b.requester || '?')} → ${escapeHtml(b.receptionniste || '?')}${b.n_ot ? ' · OT ' + escapeHtml(b.n_ot) : ''}</span><br>
+            <span class="muted">${(b.lines || []).map((l) => `${escapeHtml(l.designation || ('#' + l.id_article))} × ${l.quantite}`).join(', ')}</span>
+          </div>
+          <span style="display:flex;flex-direction:column;gap:6px">
+            <button class="ghost" data-id="${b.id}" data-kind="bsm" data-action="approve">✓ Valider</button>
+            <button class="ghost" data-id="${b.id}" data-kind="bsm" data-action="reject">✕ Refuser</button>
+          </span>
+        </div>
+      `).join('');
+      wirePendingButtons(box);
+    } catch (e) {
+      document.getElementById('pending-bsm').innerHTML = `<div class="error">${escapeHtml(e.message)}</div>`;
+    }
+  }
+
+  async function loadPendingBrm() {
+    try {
+      const brms = await api('/brm/pending');
+      const box = document.getElementById('pending-brm');
+      box.innerHTML = brms.length === 0 ? '<div class="empty">Rien en attente</div>' : brms.map((b) => `
+        <div class="line-item" style="align-items:flex-start">
+          <div class="line-name">
+            Demande #${b.id} · ${escapeHtml(b.type_stock || '')}<br>
+            <span class="muted">${escapeHtml(b.requester || '?')} · ${escapeHtml(b.type_retour_label || '')}</span><br>
+            <span class="muted">${(b.lines || []).map((l) => `${escapeHtml(l.designation || ('#' + l.id_article))} × ${l.quantite}`).join(', ')}</span>
+          </div>
+          <span style="display:flex;flex-direction:column;gap:6px">
+            <button class="ghost" data-id="${b.id}" data-kind="brm" data-action="approve">✓ Valider</button>
+            <button class="ghost" data-id="${b.id}" data-kind="brm" data-action="reject">✕ Refuser</button>
+          </span>
+        </div>
+      `).join('');
+      wirePendingButtons(box);
+    } catch (e) {
+      document.getElementById('pending-brm').innerHTML = `<div class="error">${escapeHtml(e.message)}</div>`;
+    }
+  }
+
+  function wirePendingButtons(box) {
+    box.querySelectorAll('button[data-action=approve]').forEach((btn) => {
+      btn.onclick = () => resolvePending(btn.dataset.kind, btn.dataset.id, 'approve');
+    });
+    box.querySelectorAll('button[data-action=reject]').forEach((btn) => {
+      btn.onclick = () => resolvePending(btn.dataset.kind, btn.dataset.id, 'reject');
+    });
+  }
+
+  async function resolvePending(kind, id, action) {
+    let reason = null;
+    if (action === 'reject') {
+      reason = prompt('Motif du refus (optionnel) :') || null;
+      if (reason === null && !confirm('Refuser cette demande sans motif ?')) return;
+    }
+    try {
+      await api(`/${kind}/pending/${id}/${action}`, { method: 'POST', body: reason ? { reason } : {} });
+      showToast(action === 'approve' ? `✓ Demande #${id} validée` : `✕ Demande #${id} refusée`);
+      renderValidation();
+    } catch (e) {
+      showToast(e.message, true);
+    }
+  }
+
+  // ---- Historique tab (managers) ----------------------------------------
+  async function renderHistorique() {
+    const main = document.getElementById('main');
+    main.innerHTML = `
+      <div class="card">
+        <div class="segmented" id="hist-kind">
+          <button data-v="bsm" class="selected">Sorties (BSM)</button>
+          <button data-v="brm">Retours (BRM)</button>
+        </div>
+      </div>
+      <div class="card" id="hist-results"><div class="empty">Chargement…</div></div>
+    `;
+    wireTypeSegmented('hist-kind');
+    document.querySelectorAll('#hist-kind button').forEach((b) => b.onclick = () => setTimeout(() => loadHistorique(b.dataset.v), 0));
+    loadHistorique('bsm');
+  }
+
+  async function loadHistorique(kind) {
+    const box = document.getElementById('hist-results');
+    box.innerHTML = '<div class="empty">Chargement…</div>';
+    try {
+      const rows = await api(`/${kind}/history`);
+      if (rows.length === 0) { box.innerHTML = '<div class="empty">Aucun historique</div>'; return; }
+      box.innerHTML = rows.map((r) => {
+        const validated = r.validation === 'Oui';
+        const who = kind === 'bsm' ? r.createur : r.retour_par;
+        const label = kind === 'bsm'
+          ? `BSM #${r.id} · ${escapeHtml(r.type_stock)}${r.n_ot ? ' · OT ' + escapeHtml(r.n_ot) : ''}`
+          : `BRM #${r.id} · ${escapeHtml(r.type_stock)} · ${escapeHtml(r.type_retour_label || '')}`;
+        const date = kind === 'bsm' ? r.date_bsm : r.date_retour;
+        const validatedLine = validated
+          ? (r.validated_by ? `Validé par ${escapeHtml(r.validated_by)}` : 'Validé automatiquement')
+          : '';
+        return `
+          <div class="line-item">
+            <div class="line-name">
+              ${label}<br>
+              <span class="muted">${escapeHtml(who || '?')} · ${new Date(date).toLocaleDateString('fr-FR')}${validatedLine ? ' · ' + validatedLine : ''}</span>
+            </div>
+            <span class="stock-pill ${validated ? '' : 'low'}">${validated ? 'validé' : 'en attente'}</span>
+          </div>
+        `;
+      }).join('');
+    } catch (e) {
+      box.innerHTML = `<div class="error">${escapeHtml(e.message)}</div>`;
+    }
+  }
+
+  // ---- Utilisateurs tab (admin) ------------------------------------------
+  async function renderUsers() {
+    const main = document.getElementById('main');
+    main.innerHTML = `
+      <div class="card">
+        <h2>Nouvel utilisateur</h2>
+        <label>Identifiant</label>
+        <input id="new-login" />
+        <label>Mot de passe</label>
+        <input id="new-password" type="password" />
+        <label>Rôle</label>
+        <select id="new-fonction">
+          <option>Administrateur</option>
+          <option>Responsable Méthode</option>
+          <option>Responsable Magasin</option>
+          <option>Responsable Achat</option>
+          <option>Magasinier</option>
+          <option>Technicien</option>
+        </select>
+        <button class="primary" id="create-user">Créer</button>
+        <div class="error" id="create-user-error"></div>
+      </div>
+      <div class="card">
+        <h2>Utilisateurs</h2>
+        <div id="users-list"><div class="empty">Chargement…</div></div>
+      </div>
+    `;
+    document.getElementById('create-user').onclick = createUser;
+    loadUsers();
+  }
+
+  async function loadUsers() {
+    const box = document.getElementById('users-list');
+    try {
+      const users = await api('/admin/users');
+      box.innerHTML = users.map((u) => `
+        <div class="line-item">
+          <div class="line-name">
+            ${escapeHtml(u.login)}<br>
+            <span class="muted">${escapeHtml(u.fonction)}${u.deleted ? ' · désactivé' : ''}</span>
+          </div>
+          <span style="display:flex;gap:6px">
+            <button class="ghost" data-action="reset" data-id="${u.id}" data-login="${escapeHtml(u.login)}">🔑</button>
+            <button class="ghost" data-action="toggle" data-id="${u.id}" data-deleted="${u.deleted}">${u.deleted ? '✓' : '✕'}</button>
+          </span>
+        </div>
+      `).join('');
+      box.querySelectorAll('[data-action=reset]').forEach((btn) => {
+        btn.onclick = () => resetUserPassword(btn.dataset.id, btn.dataset.login);
+      });
+      box.querySelectorAll('[data-action=toggle]').forEach((btn) => {
+        btn.onclick = () => toggleUser(btn.dataset.id, btn.dataset.deleted === 'true');
+      });
+    } catch (e) {
+      box.innerHTML = `<div class="error">${escapeHtml(e.message)}</div>`;
+    }
+  }
+
+  async function createUser() {
+    const errBox = document.getElementById('create-user-error');
+    errBox.textContent = '';
+    const login = document.getElementById('new-login').value.trim();
+    const password = document.getElementById('new-password').value;
+    const fonction = document.getElementById('new-fonction').value;
+    if (!login || !password) { errBox.textContent = 'Identifiant et mot de passe requis.'; return; }
+    try {
+      await api('/admin/users', { method: 'POST', body: { login, password, fonction } });
+      showToast('✓ Utilisateur créé');
+      renderUsers();
+    } catch (e) {
+      errBox.textContent = e.message;
+    }
+  }
+
+  async function resetUserPassword(id, login) {
+    const newPassword = prompt(`Nouveau mot de passe pour ${login} :`);
+    if (!newPassword) return;
+    try {
+      await api(`/admin/users/${id}/reset-password`, { method: 'POST', body: { new_password: newPassword } });
+      showToast('✓ Mot de passe réinitialisé');
+    } catch (e) {
+      showToast(e.message, true);
+    }
+  }
+
+  async function toggleUser(id, currentlyDeleted) {
+    try {
+      const users = await api('/admin/users');
+      const u = users.find((x) => x.id === Number(id));
+      if (!u) return;
+      await api(`/admin/users/${id}`, { method: 'PUT', body: { login: u.login, fonction: u.fonction, deleted: !currentlyDeleted } });
+      showToast('✓ Statut mis à jour');
+      renderUsers();
+    } catch (e) {
+      showToast(e.message, true);
+    }
+  }
+
+  // ---- Shared widgets -----------------------------------------------
+  let toastTimer = null;
+  function showToast(message, isError = false) {
+    const toast = document.getElementById('toast');
+    const bubble = toast.querySelector('.bubble');
+    bubble.textContent = message;
+    bubble.classList.toggle('error', isError);
+    toast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove('show'), 2500);
+  }
+
+  async function loadSelect(id, path, labelField, valueField = 'id') {
+    const el = document.getElementById(id);
+    try {
+      const rows = await api(path);
+      el.innerHTML = rows.map((r) => `<option value="${r[valueField]}">${escapeHtml(r[labelField])}</option>`).join('');
+    } catch (e) {
+      el.innerHTML = `<option>Erreur de chargement</option>`;
+    }
+  }
+
+  function wireTypeSegmented(containerId) {
+    const container = document.getElementById(containerId);
+    container.querySelectorAll('button').forEach((b) => {
+      b.onclick = () => {
+        container.querySelectorAll('button').forEach((x) => x.classList.remove('selected'));
+        b.classList.add('selected');
+      };
+    });
+  }
+
+  function wireArticlePicker(inputId, suggestionsId, onPick) {
+    const input = document.getElementById(inputId);
+    const box = document.getElementById(suggestionsId);
+    input.oninput = debounce(async () => {
+      const q = input.value.trim();
+      if (!q) { box.innerHTML = ''; return; }
+      try {
+        const rows = await api('/articles?search=' + encodeURIComponent(q));
+        box.innerHTML = rows.slice(0, 8).map((a) => `
+          <div class="article-row" data-id="${a.id}" data-name="${escapeHtml(a.designation)}" style="cursor:pointer">
+            <div class="name">${escapeHtml(a.designation)}</div>
+            <span class="stock-pill">${(a.stock_neuf || 0) + (a.stock_use || 0)}</span>
+          </div>
+        `).join('');
+        box.querySelectorAll('.article-row').forEach((row) => {
+          row.onclick = () => {
+            onPick({ id: Number(row.dataset.id), name: row.dataset.name });
+            input.value = ''; box.innerHTML = '';
+          };
+        });
+      } catch (e) {
+        box.innerHTML = `<div class="error">${escapeHtml(e.message)}</div>`;
+      }
+    }, 250);
+  }
+
+  function addLine(list, article, containerId) {
+    if (list.some((l) => l.id === article.id)) return;
+    list.push({ id: article.id, name: article.name, qty: 1 });
+    renderLines(containerId || 'lines', list);
+  }
+
+  function renderLines(containerId, list) {
+    const box = document.getElementById(containerId);
+    if (!box) return;
+    if (list.length === 0) {
+      box.innerHTML = '<div class="empty">Aucun article ajouté</div>';
+      return;
+    }
+    box.innerHTML = list.map((l, i) => `
+      <div class="line-item">
+        <div class="line-name">${escapeHtml(l.name)}</div>
+        <input type="number" min="0.01" step="0.01" value="${l.qty}" data-idx="${i}" class="line-qty" />
+        <button class="ghost" data-idx="${i}" data-action="remove">✕</button>
+      </div>
+    `).join('');
+    box.querySelectorAll('.line-qty').forEach((inp) => {
+      inp.oninput = () => { list[Number(inp.dataset.idx)].qty = Number(inp.value); };
+    });
+    box.querySelectorAll('[data-action=remove]').forEach((btn) => {
+      btn.onclick = () => { list.splice(Number(btn.dataset.idx), 1); renderLines(containerId, list); };
+    });
+  }
+
+  function debounce(fn, ms) {
+    let t;
+    return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+  }
+  function escapeHtml(s) {
+    return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+  }
+
+  // ---- Install prompt (Android/Chrome native prompt + iOS instructions) --
+  function setupInstallBanner() {
+    const banner = document.getElementById('install-banner');
+    const text = document.getElementById('install-banner-text');
+    const action = document.getElementById('install-banner-action');
+    const close = document.getElementById('install-banner-close');
+
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches
+      || window.navigator.standalone === true;
+    if (isStandalone) return; // already installed, nothing to do
+
+    if (localStorage.getItem('gmao_install_dismissed') === '1') return;
+
+    close.onclick = () => {
+      banner.classList.remove('show');
+      localStorage.setItem('gmao_install_dismissed', '1');
+    };
+
+    const isIos = /iphone|ipad|ipod/i.test(window.navigator.userAgent);
+
+    if (isIos) {
+      text.textContent = 'Installez cette app : appuyez sur Partager puis "Sur l\'écran d\'accueil".';
+      action.style.display = 'none';
+      banner.classList.add('show');
+      return;
+    }
+
+    // Android/Chrome: wait for the browser's own install signal, then
+    // trigger its native prompt from our button.
+    let deferredPrompt = null;
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      text.textContent = 'Installez Stock GMAO sur cet appareil.';
+      action.textContent = 'Installer';
+      action.style.display = 'inline-block';
+      banner.classList.add('show');
+    });
+
+    action.onclick = async () => {
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      await deferredPrompt.userChoice;
+      deferredPrompt = null;
+      banner.classList.remove('show');
+    };
+  }
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch((e) => console.warn('SW registration failed', e));
+    });
+  }
+
+  setupInstallBanner();
+  loadTheme();
+  loadSession();
+  render();
+  if (state.token) registerPushNotifications();
+
+  // Keep the branded loading screen up just long enough to be seen (avoids
+  // an ugly flash on fast devices/local networks), then fade it out.
+  const MIN_SPLASH_MS = 900;
+  setTimeout(() => {
+    const el = document.getElementById('loading-screen');
+    if (el) {
+      el.classList.add('hidden');
+      setTimeout(() => el.remove(), 450);
+    }
+  }, MIN_SPLASH_MS);
+})();
+</script>
+</body>
+</html>
