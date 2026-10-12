@@ -1,5 +1,5 @@
 const express = require('express');
-const { sql, getPool } = require('../db');
+const { sql, getAppPool } = require('../appDb');
 const { requireAuth } = require('../middleware/auth');
 
 const router = express.Router();
@@ -12,7 +12,7 @@ router.post('/register-token', async (req, res) => {
   if (!token) return res.status(400).json({ error: 'token is required' });
 
   try {
-    const pool = await getPool();
+    const pool = await getAppPool();
     await pool
       .request()
       .input('id_user', sql.Int, req.user.id)
@@ -36,7 +36,7 @@ router.post('/register-token', async (req, res) => {
 // addition to the OS-level push itself).
 router.get('/', async (req, res) => {
   try {
-    const pool = await getPool();
+    const pool = await getAppPool();
     const result = await pool
       .request()
       .input('id_user', sql.Int, req.user.id)
@@ -55,7 +55,7 @@ router.get('/', async (req, res) => {
 
 router.get('/unread-count', async (req, res) => {
   try {
-    const pool = await getPool();
+    const pool = await getAppPool();
     const result = await pool
       .request()
       .input('id_user', sql.Int, req.user.id)
@@ -69,7 +69,7 @@ router.get('/unread-count', async (req, res) => {
 
 router.post('/mark-read', async (req, res) => {
   try {
-    const pool = await getPool();
+    const pool = await getAppPool();
     await pool
       .request()
       .input('id_user', sql.Int, req.user.id)

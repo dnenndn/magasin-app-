@@ -1,5 +1,6 @@
 const express = require('express');
 const { sql, getPool } = require('../db');
+const { getAppPool } = require('../appDb');
 const { requireAuth } = require('../middleware/auth');
 const { RETURN_REASONS } = require('./brm');
 
@@ -35,7 +36,9 @@ router.get('/mine', async (req, res) => {
         order by id desc
       `);
 
-    const pendingResult = await pool
+    // Pending/rejected requests live in the small app database.
+    const appPool = await getAppPool();
+    const pendingResult = await appPool
       .request()
       .input('u', sql.Int, userId)
       .query(`

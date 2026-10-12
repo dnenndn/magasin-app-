@@ -22,6 +22,7 @@ const brmRoutes = require('./routes/brm');
 const notificationsRoutes = require('./routes/notifications');
 const adminRoutes = require('./routes/admin');
 const movementsRoutes = require('./routes/movements');
+const daRoutes = require('./routes/da');
 
 const app = express();
 
@@ -39,6 +40,7 @@ app.use('/api/brm', brmRoutes);
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/movements', movementsRoutes);
+app.use('/api/da', daRoutes);
 
 app.use((err, _req, res, _next) => {
   console.error(err);

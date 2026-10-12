@@ -1,8 +1,14 @@
 const express = require('express');
 const { sql, getPool } = require('../db');
+const { getAppPool } = require('../appDb');
+const { loginsByIds } = require('../userLookup');
 const { requireAuth } = require('../middleware/auth');
 const { MANAGER_ROLES, isManager, requireRole } = require('../roles');
 const { notifyRoles, notifyUsers } = require('../push');
+
+// Pending requests (and who approved what) live in the small app database;
+// the original GMAO database only ever receives the real BRM once approved.
+// brm itself is left exactly as the desktop app defines it (no extra columns).
 
 const router = express.Router();
 router.use(requireAuth);
@@ -53,18 +59,17 @@ async function commitBrm(pool, { type_retour, type_stock, n_bsm, lines }, reques
       .input('type_stock', sql.NVarChar, STOCK_LABEL[type_stock])
       .input('retour_par', sql.Int, requesterId)
       .input('date_retour', sql.Date, now)
-      .input('heure_retour', sql.NVarChar, now.toTimeString().slice(0, 8))
-      .input('validation', sql.NVarChar, 'Oui');
+      .input('heure_retour', sql.NVarChar, now.toTimeString().slice(0, 8));
 
     const headerResult = n_bsm
       ? await request.input('n_bsm', sql.Int, n_bsm).query(
-          `insert into brm (type_retour, type_stock, retour_par, date_retour, heure_retour, n_bsm, validation)
-           values (@type_retour, @type_stock, @retour_par, @date_retour, @heure_retour, @n_bsm, @validation)
+          `insert into brm (type_retour, type_stock, retour_par, date_retour, heure_retour, n_bsm)
+           values (@type_retour, @type_stock, @retour_par, @date_retour, @heure_retour, @n_bsm)
            select cast(scope_identity() as int) as id`
         )
       : await request.query(
-          `insert into brm (type_retour, type_stock, retour_par, date_retour, heure_retour, validation)
-           values (@type_retour, @type_stock, @retour_par, @date_retour, @heure_retour, @validation)
+          `insert into brm (type_retour, type_stock, retour_par, date_retour, heure_retour)
+           values (@type_retour, @type_stock, @retour_par, @date_retour, @heure_retour)
            select cast(scope_identity() as int) as id`
         );
 
@@ -134,7 +139,8 @@ router.post('/', async (req, res) => {
   }
 
   try {
-    const result = await pool
+    const appPool = await getAppPool();
+    const result = await appPool
       .request()
       .input('kind', sql.NVarChar, 'brm')
       .input('id_requester', sql.Int, req.user.id)
@@ -164,16 +170,20 @@ router.post('/', async (req, res) => {
 router.get('/pending', requireRole(MANAGER_ROLES), async (_req, res) => {
   try {
     const pool = await getPool();
-    const result = await pool
+    const appPool = await getAppPool();
+    const result = await appPool
       .request()
       .input('kind', sql.NVarChar, 'brm')
       .query(`
-        select p.id, p.payload, p.created_at, u.login as requester
-        from app_pending_request p
-        left join utilisateur u on u.id = p.id_requester
-        where p.kind = @kind and p.status = 'pending'
-        order by p.id desc
+        select id, id_requester, payload, created_at
+        from app_pending_request
+        where kind = @kind and status = 'pending'
+        order by id desc
       `);
+
+    // Requester logins come from the original database's utilisateur table
+    // (the two databases are never joined in SQL).
+    const logins = await loginsByIds(result.recordset.map((r) => r.id_requester));
 
     const rows = [];
     for (const row of result.recordset) {
@@ -189,7 +199,7 @@ router.get('/pending', requireRole(MANAGER_ROLES), async (_req, res) => {
       rows.push({
         id: row.id,
         created_at: row.created_at,
-        requester: row.requester,
+        requester: logins[row.id_requester],
         type_stock: payload.type_stock,
         type_retour: payload.type_retour,
         type_retour_label: RETURN_REASONS[payload.type_retour],
@@ -206,10 +216,15 @@ router.get('/pending', requireRole(MANAGER_ROLES), async (_req, res) => {
 
 router.post('/pending/:id/approve', requireRole(MANAGER_ROLES), async (req, res) => {
   const idPending = Number(req.params.id);
-  const pool = await getPool();
+  let appPool = null;
+  let claimed = false;
+  let idBrm = null;
 
   try {
-    const pendingResult = await pool
+    const pool = await getPool();
+    appPool = await getAppPool();
+
+    const pendingResult = await appPool
       .request()
       .input('id', sql.Int, idPending)
       .input('kind', sql.NVarChar, 'brm')
@@ -218,10 +233,23 @@ router.post('/pending/:id/approve', requireRole(MANAGER_ROLES), async (req, res)
     if (!pending) return res.status(404).json({ error: 'Demande introuvable' });
     if (pending.status !== 'pending') return res.status(409).json({ error: 'Cette demande a déjà été traitée' });
 
-    const payload = JSON.parse(pending.payload);
-    const idBrm = await commitBrm(pool, payload, pending.id_requester);
+    // The request lives in the app database and the real BRM is created in
+    // the GMAO database, so the two writes can't share one transaction.
+    // Claim the request first (atomic: only one manager can win), so two
+    // managers tapping "Valider" at once can't both return the stock.
+    const claim = await appPool
+      .request()
+      .input('id', sql.Int, idPending)
+      .query("update app_pending_request set status = 'approving' where id = @id and status = 'pending'");
+    if (claim.rowsAffected[0] !== 1) return res.status(409).json({ error: 'Cette demande a déjà été traitée' });
+    claimed = true;
 
-    await pool
+    const payload = JSON.parse(pending.payload);
+    idBrm = await commitBrm(pool, payload, pending.id_requester);
+
+    // From here on the real BRM exists in GMAO - the request must never go
+    // back to 'pending' (that would let it be applied a second time).
+    await appPool
       .request()
       .input('id', sql.Int, idPending)
       .input('id_result', sql.Int, idBrm)
@@ -247,6 +275,26 @@ router.post('/pending/:id/approve', requireRole(MANAGER_ROLES), async (req, res)
     res.json({ ok: true, id_brm: idBrm });
   } catch (err) {
     console.error('brm approve error:', err);
+
+    if (idBrm != null) {
+      // The BRM was created but recording that on the request failed. Leave
+      // the request as 'approving' so it can't be applied twice.
+      console.error(`brm approve: BRM #${idBrm} created but request #${idPending} could not be marked approved - fix app_pending_request manually.`);
+      return res.status(500).json({ error: `Le retour a été créé (BRM #${idBrm}) mais la demande n'a pas pu être mise à jour.` });
+    }
+
+    if (claimed) {
+      // Nothing was written to GMAO - hand the request back so it shows up
+      // in the pending list again.
+      try {
+        await appPool
+          .request()
+          .input('id', sql.Int, idPending)
+          .query("update app_pending_request set status = 'pending' where id = @id and status = 'approving'");
+      } catch (releaseErr) {
+        console.error('brm approve: could not release request back to pending:', releaseErr);
+      }
+    }
     res.status(400).json({ error: err.message || 'Server error approving the request' });
   }
 });
@@ -256,8 +304,8 @@ router.post('/pending/:id/reject', requireRole(MANAGER_ROLES), async (req, res) 
   const { reason } = req.body || {};
 
   try {
-    const pool = await getPool();
-    const pendingResult = await pool
+    const appPool = await getAppPool();
+    const pendingResult = await appPool
       .request()
       .input('id', sql.Int, idPending)
       .input('kind', sql.NVarChar, 'brm')
@@ -266,12 +314,14 @@ router.post('/pending/:id/reject', requireRole(MANAGER_ROLES), async (req, res) 
     if (!pending) return res.status(404).json({ error: 'Demande introuvable' });
     if (pending.status !== 'pending') return res.status(409).json({ error: 'Cette demande a déjà été traitée' });
 
-    await pool
+    // Only reject if it's still pending - an approval in progress wins.
+    const rejected = await appPool
       .request()
       .input('id', sql.Int, idPending)
       .input('resolved_by', sql.Int, req.user.id)
       .input('reason', sql.NVarChar, reason || null)
-      .query("update app_pending_request set status = 'rejected', resolved_by = @resolved_by, resolved_at = getdate(), reason = @reason where id = @id");
+      .query("update app_pending_request set status = 'rejected', resolved_by = @resolved_by, resolved_at = getdate(), reason = @reason where id = @id and status = 'pending'");
+    if (rejected.rowsAffected[0] !== 1) return res.status(409).json({ error: 'Cette demande a déjà été traitée' });
 
     if (pending.id_requester !== req.user.id) {
       notifyUsers([pending.id_requester], {
@@ -293,16 +343,36 @@ router.post('/pending/:id/reject', requireRole(MANAGER_ROLES), async (req, res) 
 router.get('/history', requireRole(MANAGER_ROLES), async (_req, res) => {
   try {
     const pool = await getPool();
+    // brm has no validation column of its own (see top of file); 'Oui' is a
+    // constant because this list only shows BRMs that already exist, i.e.
+    // were validated (or auto-approved).
     const result = await pool.request().query(`
-      select top 100 b.id, b.type_retour, b.type_stock, b.n_bsm, b.date_retour, b.heure_retour, b.validation,
-             u.login as retour_par, v.login as validated_by
+      select top 100 b.id, b.type_retour, b.type_stock, b.n_bsm, b.date_retour, b.heure_retour, 'Oui' as validation,
+             u.login as retour_par
       from brm b
       left join utilisateur u on u.id = b.retour_par
-      left join app_pending_request p on p.kind = 'brm' and p.id_result = b.id and p.status = 'approved'
-      left join utilisateur v on v.id = p.resolved_by
       order by b.id desc
     `);
-    res.json(result.recordset.map((r) => ({ ...r, type_retour_label: RETURN_REASONS[r.type_retour] })));
+    const rows = result.recordset;
+
+    // Who approved each one comes from the app database (only BRMs that went
+    // through a pending request have an entry; manager-created ones don't).
+    const approvals = {};
+    if (rows.length > 0) {
+      const appPool = await getAppPool();
+      const request = appPool.request().input('kind', sql.NVarChar, 'brm');
+      rows.forEach((r, i) => request.input(`b${i}`, sql.Int, r.id));
+      const approved = await request.query(`
+        select id_result, resolved_by
+        from app_pending_request
+        where kind = @kind and status = 'approved'
+          and id_result in (${rows.map((_, i) => `@b${i}`).join(',')})
+      `);
+      const logins = await loginsByIds(approved.recordset.map((a) => a.resolved_by));
+      approved.recordset.forEach((a) => { approvals[a.id_result] = logins[a.resolved_by] || null; });
+    }
+
+    res.json(rows.map((r) => ({ ...r, validated_by: approvals[r.id] || null, type_retour_label: RETURN_REASONS[r.type_retour] })));
   } catch (err) {
     console.error('brm history error:', err);
     res.status(500).json({ error: 'Server error fetching BRM history' });

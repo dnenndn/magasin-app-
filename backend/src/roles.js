@@ -14,6 +14,25 @@ const ADMIN_ROLES = ['Administrateur'];
 // validation/history screens. Includes admins implicitly.
 const MANAGER_ROLES = ['Administrateur', 'Responsable Méthode', 'Responsable Magasin', 'Magasinier'];
 
+// Demande d'achat (DA) rules, copied from the desktop app (demande_achat.cs /
+// menu_demande_achat.cs / creer_da.cs / liste_da.cs):
+//  - everybody can create a DA except Administrateur (the desktop hides the
+//    "create" screen for that role: it only reviews DAs),
+//  - only these roles can create a DA on behalf of another user (the desktop
+//    shows the "demandeur" dropdown just for them),
+//  - these roles are the ones who see and review newly created DAs.
+const DA_CREATE_EXCLUDED_ROLES = ['Administrateur'];
+const DA_ON_BEHALF_ROLES = ['Responsable Achat', 'Responsable Méthode', 'Responsable Magasin'];
+const DA_REVIEW_ROLES = ['Administrateur', 'Responsable Méthode', 'Responsable Magasin', 'Responsable Achat'];
+
+function canCreateDa(fonction) {
+  return !DA_CREATE_EXCLUDED_ROLES.includes((fonction || '').trim());
+}
+
+function canCreateDaForOthers(fonction) {
+  return DA_ON_BEHALF_ROLES.includes((fonction || '').trim());
+}
+
 function isManager(fonction) {
   return MANAGER_ROLES.includes((fonction || '').trim());
 }
@@ -34,4 +53,7 @@ function requireRole(allowedRoles) {
   };
 }
 
-module.exports = { ADMIN_ROLES, MANAGER_ROLES, isManager, isAdmin, requireRole };
+module.exports = {
+  ADMIN_ROLES, MANAGER_ROLES, DA_REVIEW_ROLES,
+  isManager, isAdmin, canCreateDa, canCreateDaForOthers, requireRole
+};

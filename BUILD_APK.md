@@ -42,7 +42,7 @@ UPDATE utilisateur SET fonction = 'Administrateur' WHERE login = 'amine'; -- or 
 ```
 From then on, that person can create/manage every other user from the app's Utilisateurs tab.
 
-**Before any of this works**: run `backend/migrations.sql` once in SSMS - it adds two new tables (`app_device_token`, `app_notification_log`) and a `validation` column on `brm` (which didn't exist before; `bsm` already had one). Nothing in the desktop app is touched or affected by this.
+**Before any of this works**: create the small app database - run `backend/sql/01_create_app_db.sql` once in SSMS. It creates a separate `GMAO_APP` database holding the pending BSM/BRM requests, device push tokens and notification log, so your original GMAO database is not modified. If you were using an earlier version that stored those tables inside the GMAO database, also run `02_copy_existing_data.sql` (copies the existing rows), restart the backend, test, and then `03_remove_changes_from_original_db.sql` (removes the old tables and the `brm.validation` column). The backend reads `APPDB_NAME` (default `GMAO_APP`) from `.env`.
 
 ## Setting up push notifications (optional, but needed for validation alerts)
 

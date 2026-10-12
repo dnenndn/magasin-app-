@@ -1,4 +1,5 @@
 const { sql, getPool } = require('./db');
+const { getAppPool } = require('./appDb');
 
 // Lazily initialized - only actually touches Firebase when a push is sent,
 // and never throws if it isn't configured yet (so the rest of the backend
@@ -39,7 +40,9 @@ async function notifyUsers(userIds, { type, idRef, title, body }) {
     return;
   }
 
-  const pool = await getPool();
+  // Notification log and device tokens live in the small app database, not
+  // in the original GMAO database.
+  const pool = await getAppPool();
 
   // Log first - this is what powers the in-app notifications list, and we
   // want it recorded even if push delivery fails or isn't configured yet.

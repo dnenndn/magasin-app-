@@ -465,6 +465,9 @@
   const ADMIN_ROLES = ['Administrateur'];
   const MANAGER_ROLES = ['Administrateur', 'Responsable Méthode', 'Responsable Magasin', 'Magasinier'];
   const isManager = () => state.user && MANAGER_ROLES.includes(state.user.fonction);
+  // Same rule as the desktop and the server: everyone but the Administrateur
+  // role can create a demande d'achat (the server enforces it too).
+  const canCreateDa = () => state.user && state.user.fonction !== 'Administrateur';
   const isAdmin = () => state.user && ADMIN_ROLES.includes(state.user.fonction);
 
   // ---- Tiny state / storage helpers ----------------------------------
@@ -477,6 +480,8 @@
     search: '',
     selectedArticle: null,
     bsmLines: [],
+    daLines: [],
+    daOptions: null,
     receptionCommande: null,
     receptionLines: [],
     error: '',
@@ -557,8 +562,9 @@
       tabButton('bsm', '📤', 'Sortie'),
       tabButton('brm', '↩️', 'Retour')
     ];
+    if (canCreateDa()) tabs.splice(4, 0, tabButton('da', '🛒', 'Achat'));
     if (isManager()) {
-      tabs.splice(4, 0, tabButton('reception', '📥', 'Réception'));
+      tabs.splice(canCreateDa() ? 5 : 4, 0, tabButton('reception', '📥', 'Réception'));
       tabs.push(tabButton('validation', '✅', 'Valider'));
       tabs.push(tabButton('historique', '🕓', 'Historique'));
     }
@@ -608,6 +614,7 @@
     if (state.tab === 'bsm') return renderBsm();
     if (state.tab === 'reception') return renderReception();
     if (state.tab === 'brm') return renderBrm();
+    if (state.tab === 'da') return renderDa();
     if (state.tab === 'validation') return renderValidation();
     if (state.tab === 'historique') return renderHistorique();
     if (state.tab === 'users') return renderUsers();
@@ -923,6 +930,177 @@
       renderLines('lines', state.bsmLines);
     } catch (e) {
       errBox.textContent = e.message;
+    }
+  }
+
+
+  // ---- Demande d'achat (DA) tab ----------------------------------------
+  // Mirrors the desktop "creer_da" form. Approval stays in the desktop app.
+  async function renderDa() {
+    const main = document.getElementById('main');
+    main.innerHTML = `
+      <div class="card">
+        <h2>Nouvelle demande d'achat</h2>
+        <div id="da-head"><div class="empty">Chargement…</div></div>
+      </div>
+      <div class="card">
+        <h2>Articles</h2>
+        <label>Ajouter un article</label>
+        <input id="da-search" placeholder="Chercher un article…" />
+        <div id="da-suggestions"></div>
+        <div id="da-lines"></div>
+        <button class="primary" id="submit-da">Envoyer la demande</button>
+        <div class="error" id="da-error"></div>
+        <div class="success" id="da-success"></div>
+      </div>
+      <div class="card">
+        <h2>Mes demandes d'achat</h2>
+        <div id="da-mine"><div class="empty">Chargement…</div></div>
+      </div>
+    `;
+    try {
+      state.daOptions = await api('/da/options');
+    } catch (e) {
+      document.getElementById('da-head').innerHTML = `<div class="error">${escapeHtml(e.message)}</div>`;
+      return;
+    }
+    const o = state.daOptions;
+    if (!o.can_create) {
+      main.innerHTML = '<div class="card"><div class="empty">Vous ne pouvez pas créer de demande d\'achat.</div></div>';
+      return;
+    }
+    document.getElementById('da-head').innerHTML = `
+      ${o.can_choose_demandeur ? `
+        <label>Demandeur</label>
+        <select id="da-demandeur">${o.demandeurs.map((d) =>
+          `<option value="${d.id}" ${d.id === o.me.id ? 'selected' : ''}>${escapeHtml(d.login)}</option>`).join('')}</select>`
+        : `<div class="muted">Demandeur : ${escapeHtml(o.me.login)}</div>`}
+      <label>Délai (jours)</label>
+      <input id="da-delai" type="number" min="1" step="1" value="7" />
+      <label>Période</label>
+      <select id="da-periode">${o.periodes.map((p) => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join('')}</select>
+    `;
+    wireArticlePicker('da-search', 'da-suggestions', addDaLine);
+    renderDaLines();
+    document.getElementById('submit-da').onclick = submitDa;
+    loadMyDas();
+  }
+
+  async function addDaLine(art) {
+    if (state.daLines.some((l) => l.id === art.id)) return;
+    const line = { id: art.id, name: art.name, qty: 1, motif: '', requires_equipement: false, equipements: [], selected: [] };
+    state.daLines.push(line);
+    renderDaLines();
+    try {
+      const r = await api(`/da/articles/${art.id}/equipements`);
+      line.requires_equipement = !!r.requires_equipement;
+      line.equipements = r.equipements || [];
+      renderDaLines();
+    } catch (e) {
+      showToast(e.message, true);
+    }
+  }
+
+  function renderDaLines() {
+    const box = document.getElementById('da-lines');
+    if (!box) return;
+    if (state.daLines.length === 0) {
+      box.innerHTML = '<div class="empty">Aucun article ajouté</div>';
+      return;
+    }
+    box.innerHTML = state.daLines.map((l, i) => `
+      <div class="card" style="margin:8px 0;padding:10px">
+        <div class="line-item" style="padding:0">
+          <div class="line-name">${escapeHtml(l.name)}</div>
+          <input type="number" min="0.01" step="0.01" value="${l.qty}" data-idx="${i}" class="da-qty" />
+          <button class="ghost" data-idx="${i}" data-action="da-remove">✕</button>
+        </div>
+        ${l.requires_equipement ? `
+          <label>Équipements concernés</label>
+          ${l.equipements.length === 0 ? '<div class="muted">Aucun équipement lié</div>' : l.equipements.map((e) => `
+            <label style="display:flex;gap:8px;align-items:center;margin:4px 0">
+              <input type="checkbox" data-idx="${i}" data-eq="${e.id}" class="da-eq" ${l.selected.includes(e.id) ? 'checked' : ''} style="width:auto" />
+              <span>${escapeHtml(e.designation || e.nom || e.code || ('#' + e.id))}</span>
+            </label>`).join('')}`
+        : `
+          <label>Motif</label>
+          <textarea data-idx="${i}" class="da-motif" maxlength="500" rows="2" placeholder="Pourquoi cet article ?">${escapeHtml(l.motif)}</textarea>`}
+      </div>
+    `).join('');
+    box.querySelectorAll('.da-qty').forEach((inp) => {
+      inp.oninput = () => { state.daLines[Number(inp.dataset.idx)].qty = Number(inp.value); };
+    });
+    box.querySelectorAll('.da-motif').forEach((inp) => {
+      inp.oninput = () => { state.daLines[Number(inp.dataset.idx)].motif = inp.value; };
+    });
+    box.querySelectorAll('.da-eq').forEach((inp) => {
+      inp.onchange = () => {
+        const l = state.daLines[Number(inp.dataset.idx)];
+        const id = Number(inp.dataset.eq);
+        l.selected = inp.checked ? [...new Set([...l.selected, id])] : l.selected.filter((x) => x !== id);
+      };
+    });
+    box.querySelectorAll('[data-action=da-remove]').forEach((btn) => {
+      btn.onclick = () => { state.daLines.splice(Number(btn.dataset.idx), 1); renderDaLines(); };
+    });
+  }
+
+  async function submitDa() {
+    const errBox = document.getElementById('da-error');
+    const okBox = document.getElementById('da-success');
+    errBox.textContent = ''; okBox.textContent = '';
+    const delai = Number(document.getElementById('da-delai').value);
+    const periode = document.getElementById('da-periode').value;
+    const dem = document.getElementById('da-demandeur');
+    if (!(delai > 0)) { errBox.textContent = 'Indiquez un délai supérieur à 0.'; return; }
+    if (state.daLines.length === 0) { errBox.textContent = 'Ajoutez au moins un article.'; return; }
+    for (const l of state.daLines) {
+      if (!(l.qty > 0)) { errBox.textContent = `Quantité invalide : ${l.name}`; return; }
+      if (l.requires_equipement && l.selected.length === 0) { errBox.textContent = `Choisissez au moins un équipement : ${l.name}`; return; }
+      if (!l.requires_equipement && !l.motif.trim()) { errBox.textContent = `Indiquez un motif : ${l.name}`; return; }
+    }
+    const btn = document.getElementById('submit-da');
+    btn.disabled = true;
+    try {
+      await api('/da', {
+        method: 'POST',
+        body: {
+          delai, periode,
+          ...(dem ? { id_demandeur: Number(dem.value) } : {}),
+          lines: state.daLines.map((l) => ({
+            id_article: l.id, qt: l.qty,
+            motif: l.requires_equipement ? '' : l.motif.trim(),
+            id_equipements: l.requires_equipement ? l.selected : []
+          }))
+        }
+      });
+      showToast('✓ Demande d\'achat envoyée');
+      okBox.textContent = 'Demande envoyée.';
+      state.daLines = [];
+      renderDaLines();
+      loadMyDas();
+    } catch (e) {
+      errBox.textContent = e.message;
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  async function loadMyDas() {
+    const box = document.getElementById('da-mine');
+    if (!box) return;
+    try {
+      const rows = await api('/da/mine');
+      if (rows.length === 0) { box.innerHTML = '<div class="empty">Aucune demande</div>'; return; }
+      box.innerHTML = rows.map((d) => `
+        <div class="article-row" style="display:block">
+          <div class="name">DA #${d.id} · ${escapeHtml(d.statut_label)}</div>
+          <div class="code">${d.date_da ? new Date(d.date_da).toLocaleDateString('fr-FR') : ''}${d.demandeur ? ' · ' + escapeHtml(d.demandeur) : ''}</div>
+          ${(d.lines || []).map((l) => `<div class="code">• ${escapeHtml(l.designation || l.code_article || 'Article')} × ${l.qt}</div>`).join('')}
+          ${d.cause ? `<div class="error">Refus : ${escapeHtml(d.cause)}</div>` : ''}
+        </div>`).join('');
+    } catch (e) {
+      box.innerHTML = `<div class="error">${escapeHtml(e.message)}</div>`;
     }
   }
 
