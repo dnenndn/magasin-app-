@@ -33,6 +33,15 @@ function canCreateDaForOthers(fonction) {
   return DA_ON_BEHALF_ROLES.includes((fonction || '').trim());
 }
 
+// Atelier (ordres de fabrication, OF): in the desktop app every atelier screen
+// hides its save/receive buttons for the DGA role (read-only), and nobody else
+// is restricted. Same rule here.
+const ATELIER_READONLY_ROLES = ['DGA'];
+
+function canWriteAtelier(fonction) {
+  return !ATELIER_READONLY_ROLES.includes((fonction || '').trim());
+}
+
 function isManager(fonction) {
   return MANAGER_ROLES.includes((fonction || '').trim());
 }
@@ -55,5 +64,5 @@ function requireRole(allowedRoles) {
 
 module.exports = {
   ADMIN_ROLES, MANAGER_ROLES, DA_REVIEW_ROLES,
-  isManager, isAdmin, canCreateDa, canCreateDaForOthers, requireRole
+  isManager, isAdmin, canCreateDa, canCreateDaForOthers, canWriteAtelier, requireRole
 };

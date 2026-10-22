@@ -9,16 +9,20 @@ router.use(requireAuth);
 // Mirrors the columns liste_article.cs pulls, plus the unit of measure.
 router.get('/', async (req, res) => {
   const { search = '', famille_id, magasin_id } = req.query;
+  // Optional page size so the phone only downloads what it will display
+  // (the article picker shows 8 rows, it should not receive 100).
+  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 100, 1), 100);
 
   try {
     const pool = await getPool();
     const request = pool
       .request()
       .input('d', sql.Bit, false)
+      .input('limit', sql.Int, limit)
       .input('search', sql.NVarChar, `%${search}%`);
 
     let query = `
-      select top 100
+      select top (@limit)
         a.id, a.code_article, a.reference, a.designation, a.marque,
         a.stock_neuf, a.stock_use, a.stock_rebute,
         a.stock_mini, a.stock_maxi, a.stock_securite,

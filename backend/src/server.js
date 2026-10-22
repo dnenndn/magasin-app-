@@ -23,8 +23,19 @@ const notificationsRoutes = require('./routes/notifications');
 const adminRoutes = require('./routes/admin');
 const movementsRoutes = require('./routes/movements');
 const daRoutes = require('./routes/da');
+const nfcRoutes = require('./routes/nfc');
+const atelierRoutes = require('./routes/atelier');
 
 const app = express();
+
+// Compress JSON responses (typically 5-10x smaller on the wire - the biggest
+// single saving on mobile data). Optional: if the package is not installed
+// yet (npm install not run), the server still starts, just uncompressed.
+try {
+  app.use(require('compression')());
+} catch (e) {
+  console.warn('compression package not installed - run "npm install" in backend/ to save mobile data.');
+}
 
 app.use(cors({ origin: process.env.CORS_ORIGIN || '*' }));
 app.use(express.json());
@@ -41,6 +52,8 @@ app.use('/api/notifications', notificationsRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/movements', movementsRoutes);
 app.use('/api/da', daRoutes);
+app.use('/api/nfc', nfcRoutes);
+app.use('/api/atelier', atelierRoutes);
 
 app.use((err, _req, res, _next) => {
   console.error(err);

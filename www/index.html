@@ -481,6 +481,7 @@
     selectedArticle: null,
     bsmLines: [],
     daLines: [],
+    sub: { bsm: 'new', brm: 'new', da: 'new', atelier: 'open' },
     daOptions: null,
     receptionCommande: null,
     receptionLines: [],
@@ -502,6 +503,7 @@
     localStorage.setItem('gmao_session', JSON.stringify({ token: state.token, user: state.user }));
   }
   function clearSession() {
+    clearApiCache();
     localStorage.removeItem('gmao_session');
     state.token = null;
     state.user = null;
@@ -536,19 +538,95 @@
     render();
   }
 
+  // ---- Data usage -----------------------------------------------------
+  // Everything the app downloads goes through api(). To keep mobile data
+  // use low it:
+  //  - keeps short-lived copies of read-only answers in memory (the same
+  //    list opened twice within a minute is not downloaded twice),
+  //  - clears them as soon as anything is written (so nothing looks stale),
+  //  - shares one request between identical simultaneous calls,
+  //  - gives up after 25 s instead of hanging on a bad network.
+  // Automatic refreshes (bell badge, Accueil lists) are skipped on mobile
+  // data when "Économie de données" is on (see skipBackground()).
+  const apiCache = new Map();   // key -> { at, data }
+  const apiInflight = new Map();
+  const CACHE_RULES = [
+    [/^\/reference-data\//, 600000],
+    [/^\/da\/options/, 600000],
+    [/^\/notifications\/unread-count/, 60000],
+    [/^\/(movements\/mine|bsm\/pending|brm\/pending)/, 60000],
+    [/^\/articles\?/, 30000],
+    [/^\/atelier\/of\?/, 30000]
+  ];
+  function cacheTtl(path) {
+    const r = CACHE_RULES.find(([re]) => re.test(path));
+    return r ? r[1] : 0;
+  }
+  function clearApiCache() { apiCache.clear(); apiInflight.clear(); }
+
+  function dataSaverOn() {
+    try { return localStorage.getItem('gmao_data_saver') !== '0'; } catch (e) { return true; }
+  }
+  function onMeteredNetwork() {
+    const c = navigator.connection;      // Android WebView: type is 'wifi' | 'cellular' | ...
+    return !!c && (c.type === 'cellular' || c.saveData === true);
+  }
+  // True when automatic (not user-triggered) downloads should wait.
+  function skipBackground() { return dataSaverOn() && onMeteredNetwork(); }
+
+  async function networkFetch(path, options) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort('timeout'), 25000);
+    if (options.signal) options.signal.addEventListener('abort', () => ctrl.abort('cancelled'));
+    try {
+      const res = await fetch(getApiBase() + path, {
+        ...options,
+        signal: ctrl.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(state.token ? { Authorization: 'Bearer ' + state.token } : {}),
+          ...(options.headers || {})
+        },
+        body: options.body ? JSON.stringify(options.body) : undefined
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || 'Request failed');
+      return data;
+    } catch (e) {
+      if (e.name === 'AbortError' || ctrl.signal.aborted) {
+        const err = new Error(ctrl.signal.reason === 'cancelled' ? 'cancelled' : 'Réseau trop lent ou serveur injoignable.');
+        err.cancelled = ctrl.signal.reason === 'cancelled';
+        throw err;
+      }
+      if (e instanceof TypeError) throw new Error('Serveur injoignable. Vérifiez la connexion et l\'adresse du serveur.');
+      throw e;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   async function api(path, options = {}) {
-    const res = await fetch(getApiBase() + path, {
-      ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...(state.token ? { Authorization: 'Bearer ' + state.token } : {}),
-        ...(options.headers || {})
-      },
-      body: options.body ? JSON.stringify(options.body) : undefined
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || 'Request failed');
-    return data;
+    const method = (options.method || 'GET').toUpperCase();
+    if (method !== 'GET') {
+      try { return await networkFetch(path, options); }
+      finally { clearApiCache(); }          // anything may have changed
+    }
+    const ttl = options.fresh ? 0 : cacheTtl(path);
+    const key = (state.user ? state.user.id : '') + '|' + path;
+    if (ttl > 0) {
+      const hit = apiCache.get(key);
+      if (hit && Date.now() - hit.at < ttl) return hit.data;
+    }
+    const run = async () => {
+      const data = await networkFetch(path, options);
+      if (cacheTtl(path) > 0) apiCache.set(key, { at: Date.now(), data });
+      return data;
+    };
+    if (options.signal) return run();       // cancellable calls are not shared
+    if (apiInflight.has(key)) return apiInflight.get(key);
+    const p = run().finally(() => apiInflight.delete(key));
+    apiInflight.set(key, p);
+    return p;
   }
 
   // ---- Rendering -------------------------------------------------------
@@ -556,18 +634,17 @@
 
   function render() {
     if (!state.token) return renderLogin();
+    // One button per business object (BSM / BRM / DA). Creating, validating
+    // and the history of each live inside it, as sub-sections (renderHub).
     const tabs = [
       tabButton('accueil', '🏠', 'Accueil'),
       tabButton('stock', '📦', 'Stock'),
       tabButton('bsm', '📤', 'Sortie'),
       tabButton('brm', '↩️', 'Retour')
     ];
-    if (canCreateDa()) tabs.splice(4, 0, tabButton('da', '🛒', 'Achat'));
-    if (isManager()) {
-      tabs.splice(canCreateDa() ? 5 : 4, 0, tabButton('reception', '📥', 'Réception'));
-      tabs.push(tabButton('validation', '✅', 'Valider'));
-      tabs.push(tabButton('historique', '🕓', 'Historique'));
-    }
+    if (canCreateDa()) tabs.push(tabButton('da', '🛒', 'Achat'));
+    tabs.push(tabButton('atelier', '🏭', 'Atelier'));
+    if (isManager()) tabs.push(tabButton('reception', '📥', 'Réception'));
     if (isAdmin()) {
       tabs.push(tabButton('users', '👤', 'Utilisateurs'));
     }
@@ -611,13 +688,38 @@
     document.querySelectorAll('nav.tabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === state.tab));
     if (state.tab === 'accueil') return renderAccueil();
     if (state.tab === 'stock') return renderStock();
-    if (state.tab === 'bsm') return renderBsm();
+    if (state.tab === 'bsm') return renderHub('bsm', { new: renderBsm, pending: (r) => renderPending(r, 'bsm'), history: (r) => renderHistorique(r, 'bsm') });
+    if (state.tab === 'brm') return renderHub('brm', { new: renderBrm, pending: (r) => renderPending(r, 'brm'), history: (r) => renderHistorique(r, 'brm') });
+    if (state.tab === 'da') return renderHub('da', { new: renderDa, mine: renderDaMine });
+    if (state.tab === 'atelier') return renderHub('atelier', { open: (r) => renderAtelierList(r, 'open'), solde: (r) => renderAtelierList(r, 'solde') });
     if (state.tab === 'reception') return renderReception();
-    if (state.tab === 'brm') return renderBrm();
-    if (state.tab === 'da') return renderDa();
-    if (state.tab === 'validation') return renderValidation();
-    if (state.tab === 'historique') return renderHistorique();
     if (state.tab === 'users') return renderUsers();
+  }
+
+
+  // ---- Hubs: one tab per BSM / BRM / DA with sub-sections ----------------
+  // [key, label, managerOnly]
+  const HUBS = {
+    bsm: [['new', 'Nouvelle', false], ['pending', 'À valider', true], ['history', 'Historique', true]],
+    brm: [['new', 'Nouveau', false], ['pending', 'À valider', true], ['history', 'Historique', true]],
+    da: [['new', 'Nouvelle', false], ['mine', 'Mes demandes', false]],
+    atelier: [['open', 'OF à solder', false], ['solde', 'Soldés', false]]
+  };
+
+  function renderHub(tab, renderers) {
+    const items = HUBS[tab].filter((i) => !i[2] || isManager());
+    if (!items.some((i) => i[0] === state.sub[tab])) state.sub[tab] = items[0][0];
+    const main = document.getElementById('main');
+    main.innerHTML = (items.length > 1 ? `
+      <div class="card" style="padding:10px">
+        <div class="segmented" id="hub-nav" style="margin-top:0">
+          ${items.map((i) => `<button data-v="${i[0]}" class="${i[0] === state.sub[tab] ? 'selected' : ''}">${i[1]}</button>`).join('')}
+        </div>
+      </div>` : '') + '<div id="sub-body"></div>';
+    main.querySelectorAll('#hub-nav button').forEach((b) => {
+      b.onclick = () => { state.sub[tab] = b.dataset.v; renderTab(); };
+    });
+    return renderers[state.sub[tab]](document.getElementById('sub-body'));
   }
 
   function renderLogin() {
@@ -741,7 +843,9 @@
         <a href="#" id="movements-see-all">Tout voir ›</a>
       </div>
       <div class="card" id="accueil-movements"><div class="empty">Chargement…</div></div>
+      <div class="card" id="data-card"></div>
     `;
+    drawDataCard();
     document.querySelectorAll('.quick-tile').forEach((btn) => {
       btn.onclick = () => { state.tab = btn.dataset.tab; state.error = ''; state.notice = ''; renderTab(); };
     });
@@ -751,11 +855,45 @@
     loadAccueilMovements();
   }
 
-  async function loadAccueilPending() {
+  // On mobile data (with "Économie de données" on) the Accueil lists are not
+  // downloaded automatically; this shows a button instead.
+  function deferredLoadHtml(label, onClick) {
+    return `<div class="empty">Économie de données : ${label} non chargé(es).<br><button class="ghost" data-deferred-load style="margin-top:8px">Charger</button></div>`;
+  }
+
+  function drawDataCard() {
+    const box = document.getElementById('data-card');
+    if (!box) return;
+    const on = dataSaverOn();
+    box.innerHTML = `
+      <div class="line-item" style="align-items:flex-start">
+        <div class="line-name"><strong>📶 Économie de données : ${on ? 'activée' : 'désactivée'}</strong><br>
+          <span class="muted">${on ? 'Sur données mobiles, rien n\'est téléchargé automatiquement. Vos actions (recherche, création) fonctionnent normalement.' : 'Les listes se mettent à jour automatiquement, même sur données mobiles.'}</span></div>
+        <button class="ghost" id="data-toggle">${on ? 'Désactiver' : 'Activer'}</button>
+      </div>
+      <button class="ghost" id="data-refresh" style="width:100%;margin-top:6px">↻ Actualiser maintenant</button>`;
+    box.querySelector('#data-toggle').onclick = () => {
+      try { localStorage.setItem('gmao_data_saver', on ? '0' : '1'); } catch (e) {}
+      drawDataCard();
+    };
+    box.querySelector('#data-refresh').onclick = () => {
+      clearApiCache();
+      if (isManager()) loadAccueilPending(true);
+      loadAccueilMovements(true);
+      refreshBellBadge(true);
+    };
+  }
+
+  async function loadAccueilPending(force) {
     const box = document.getElementById('accueil-pending');
     if (!box) return;
+    if (!force && skipBackground()) {
+      box.innerHTML = deferredLoadHtml('demandes en attente');
+      box.querySelector('[data-deferred-load]').onclick = () => loadAccueilPending(true);
+      return;
+    }
     try {
-      const [bsms, brms] = await Promise.all([api('/bsm/pending'), api('/brm/pending')]);
+      const [bsms, brms] = await Promise.all([api('/bsm/pending', force ? { fresh: true } : {}), api('/brm/pending', force ? { fresh: true } : {})]);
       const items = [
         ...bsms.map((b) => ({
           ref: b.n_ot ? `OT ${escapeHtml(b.n_ot)}` : `BSM-${String(b.id).padStart(4, '0')}`,
@@ -787,17 +925,27 @@
           `).join('')}
         </div>
       `;
-      document.getElementById('pending-card-link').onclick = () => { state.tab = 'validation'; state.error = ''; state.notice = ''; renderTab(); };
+      document.getElementById('pending-card-link').onclick = () => {
+        state.tab = bsms.length > 0 ? 'bsm' : 'brm';
+        state.sub[state.tab] = 'pending';
+        state.error = ''; state.notice = '';
+        render();
+      };
     } catch (e) {
       box.innerHTML = '';
     }
   }
 
-  async function loadAccueilMovements() {
+  async function loadAccueilMovements(force) {
     const box = document.getElementById('accueil-movements');
     if (!box) return;
+    if (!force && skipBackground()) {
+      box.innerHTML = deferredLoadHtml('mouvements');
+      box.querySelector('[data-deferred-load]').onclick = () => loadAccueilMovements(true);
+      return;
+    }
     try {
-      const rows = await api('/movements/mine');
+      const rows = await api('/movements/mine', force ? { fresh: true } : {});
       state.accueilMovements = rows;
       if (rows.length === 0) { box.innerHTML = '<div class="empty">Aucun mouvement pour le moment</div>'; return; }
       box.innerHTML = rows.slice(0, 6).map(movementRowHtml).join('');
@@ -836,21 +984,33 @@
     input.oninput = debounce(async () => {
       state.search = input.value;
       await loadArticles();
-    }, 300);
+    }, 400);
     if (state.search) loadArticles();
   }
 
+  let stockSearchCtrl = null;
   async function loadArticles() {
     const results = document.getElementById('results');
+    if (stockSearchCtrl) stockSearchCtrl.abort();
+    if (state.search.trim().length < 2) { results.innerHTML = '<div class="empty">Tapez au moins 2 lettres…</div>'; return; }
+    stockSearchCtrl = new AbortController();
     try {
-      const rows = await api('/articles?search=' + encodeURIComponent(state.search));
+      const rows = await api('/articles?limit=40&search=' + encodeURIComponent(state.search.trim()), { signal: stockSearchCtrl.signal });
       state.articles = rows;
       if (rows.length === 0) {
         results.innerHTML = '<div class="empty">Aucun article trouvé</div>';
         return;
       }
-      results.innerHTML = rows.map(articleRow).join('');
+      results.innerHTML = rows.map(articleRow).join('') +
+        (rows.length >= 40 ? '<div class="muted" style="padding-top:8px">Affinez la recherche pour voir d\'autres articles.</div>' : '');
+      results.querySelectorAll('[data-nfc-article]').forEach((b) => {
+        b.onclick = () => {
+          const a = rows.find((x) => x.id === Number(b.dataset.nfcArticle));
+          if (a) openArticleTags(a.id, a.designation);
+        };
+      });
     } catch (e) {
+      if (e.cancelled) return;
       results.innerHTML = `<div class="error">${escapeHtml(e.message)}</div>`;
     }
   }
@@ -864,14 +1024,17 @@
           <div class="name">${escapeHtml(a.designation)}</div>
           <div class="code">${escapeHtml(a.code_article || '')} ${a.unite ? '· ' + escapeHtml(a.unite) : ''}</div>
         </div>
-        <span class="stock-pill ${low ? 'low' : ''}">${total} ${low ? '⚠' : ''}</span>
+        <span style="display:flex;align-items:center;gap:8px">
+          ${isManager() ? `<button class="ghost" data-nfc-article="${a.id}" title="Tags NFC" style="padding:4px 8px">📡</button>` : ''}
+          <span class="stock-pill ${low ? 'low' : ''}">${total} ${low ? '⚠' : ''}</span>
+        </span>
       </div>
     `;
   }
 
   // ---- BSM (issue) tab -----------------------------------------------
-  async function renderBsm() {
-    const main = document.getElementById('main');
+  async function renderBsm(root) {
+    const main = root || document.getElementById('main');
     main.innerHTML = `
       <div class="card">
         <h2>Sortie de stock (BSM)</h2>
@@ -891,6 +1054,7 @@
         <label>Ajouter un article</label>
         <input id="article-search" placeholder="Chercher un article…" />
         <div id="article-suggestions"></div>
+        <button class="ghost" id="bsm-scan" style="width:100%;margin:8px 0">📡 Scanner un tag NFC</button>
         <div id="lines"></div>
         <button class="primary" id="submit-bsm">Valider la sortie</button>
         <div class="error" id="bsm-error"></div>
@@ -901,6 +1065,7 @@
     wireTypeSegmented('type_stock');
     wireArticlePicker('article-search', 'article-suggestions', (art) => addLine(state.bsmLines, art, 'lines'));
     renderLines('lines', state.bsmLines);
+    document.getElementById('bsm-scan').onclick = scanIntoBsm;
     document.getElementById('submit-bsm').onclick = submitBsm;
   }
 
@@ -936,8 +1101,8 @@
 
   // ---- Demande d'achat (DA) tab ----------------------------------------
   // Mirrors the desktop "creer_da" form. Approval stays in the desktop app.
-  async function renderDa() {
-    const main = document.getElementById('main');
+  async function renderDa(root) {
+    const main = root || document.getElementById('main');
     main.innerHTML = `
       <div class="card">
         <h2>Nouvelle demande d'achat</h2>
@@ -952,10 +1117,6 @@
         <button class="primary" id="submit-da">Envoyer la demande</button>
         <div class="error" id="da-error"></div>
         <div class="success" id="da-success"></div>
-      </div>
-      <div class="card">
-        <h2>Mes demandes d'achat</h2>
-        <div id="da-mine"><div class="empty">Chargement…</div></div>
       </div>
     `;
     try {
@@ -983,6 +1144,14 @@
     wireArticlePicker('da-search', 'da-suggestions', addDaLine);
     renderDaLines();
     document.getElementById('submit-da').onclick = submitDa;
+  }
+
+  function renderDaMine(root) {
+    root.innerHTML = `
+      <div class="card">
+        <h2>Mes demandes d'achat</h2>
+        <div id="da-mine"><div class="empty">Chargement…</div></div>
+      </div>`;
     loadMyDas();
   }
 
@@ -1077,8 +1246,8 @@
       showToast('✓ Demande d\'achat envoyée');
       okBox.textContent = 'Demande envoyée.';
       state.daLines = [];
-      renderDaLines();
-      loadMyDas();
+      state.sub.da = 'mine';   // show the request in the list right away
+      renderTab();
     } catch (e) {
       errBox.textContent = e.message;
     } finally {
@@ -1102,6 +1271,119 @@
     } catch (e) {
       box.innerHTML = `<div class="error">${escapeHtml(e.message)}</div>`;
     }
+  }
+
+
+  // ---- Atelier: solder / réceptionner un OF (ordre de fabrication) -------
+  // Same rules as the desktop reception screen: each reception adds to the
+  // stock; the OF becomes "Partiellement Soldé" until everything ordered is
+  // received, then "Soldé". The server enforces all of it.
+  function ofStatusPill(etat) {
+    const low = etat !== 'Soldé' && etat !== 'Partiellement Soldé';
+    return `<span class="stock-pill ${low ? 'low' : ''}">${escapeHtml(etat || '—')}</span>`;
+  }
+  const fmtQty = (n) => String(Math.round(Number(n) * 10000) / 10000);
+
+  async function renderAtelierList(root, statut) {
+    root.innerHTML = `
+      <div class="card">
+        <input id="of-search" placeholder="N° OF, code ou désignation…" value="${escapeHtml(state.ofSearch || '')}" />
+      </div>
+      <div class="card" id="of-results"><div class="empty">Chargement…</div></div>`;
+    const input = document.getElementById('of-search');
+    const load = async () => {
+      const box = document.getElementById('of-results');
+      if (!box) return;
+      try {
+        const rows = await api(`/atelier/of?statut=${statut}&search=${encodeURIComponent(state.ofSearch || '')}`);
+        if (rows.length === 0) { box.innerHTML = '<div class="empty">Aucun OF</div>'; return; }
+        box.innerHTML = rows.map((o) => `
+          <div class="article-row" data-of="${o.id}" style="cursor:pointer">
+            <div>
+              <div class="name">OF ${escapeHtml(o.n_of)} · ${escapeHtml(o.designation || '')}</div>
+              <div class="code">${escapeHtml(o.code_article || '')} · reçu ${fmtQty(o.qt_recue)} / ${fmtQty(o.quantite)}${o.date_prevu ? ' · prévu ' + new Date(o.date_prevu).toLocaleDateString('fr-FR') : ''}</div>
+            </div>
+            ${ofStatusPill(o.etat)}
+          </div>`).join('');
+        box.querySelectorAll('[data-of]').forEach((row) => { row.onclick = () => openOfSheet(Number(row.dataset.of)); });
+      } catch (e) {
+        box.innerHTML = `<div class="error">${escapeHtml(e.message)}</div>`;
+      }
+    };
+    input.oninput = debounce(() => { state.ofSearch = input.value.trim(); load(); }, 300);
+    load();
+  }
+
+  async function openOfSheet(idOf) {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:40;display:flex;align-items:flex-end';
+    overlay.innerHTML = '<div id="of-sheet" style="background:var(--panel);width:100%;max-height:85vh;overflow-y:auto;border-radius:16px 16px 0 0;padding:16px;padding-bottom:calc(16px + var(--safe-bottom))"><div class="empty">Chargement…</div></div>';
+    document.body.appendChild(overlay);
+    const sheet = overlay.querySelector('#of-sheet');
+    let changed = false;
+    const close = () => { overlay.remove(); if (changed) renderTab(); };
+    overlay.onclick = (e) => { if (e.target === overlay) close(); };
+
+    async function draw() {
+      let of;
+      try { of = await api('/atelier/of/' + idOf); }
+      catch (e) { sheet.innerHTML = `<div class="error">${escapeHtml(e.message)}</div><button class="ghost" id="of-close" style="width:100%">Fermer</button>`; sheet.querySelector('#of-close').onclick = close; return; }
+      const canReceive = of.can_write && of.reste > 0;
+      const today = new Date(); const iso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+      sheet.innerHTML = `
+        <h2 style="margin-top:0">OF ${escapeHtml(of.n_of)}</h2>
+        <div style="margin-bottom:4px"><strong>${escapeHtml(of.designation || '')}</strong></div>
+        <div class="muted">${escapeHtml(of.code_article || '')}</div>
+        <div style="margin:10px 0">${ofStatusPill(of.etat)}
+          <span class="muted"> demandé ${fmtQty(of.quantite)} · reçu ${fmtQty(of.qt_recue)} · reste ${fmtQty(of.reste)}</span></div>
+        ${of.receptions.length ? `<label>Réceptions</label>` + of.receptions.map((r) => `
+          <div class="line-item">
+            <div class="line-name">${new Date(r.date_reception).toLocaleDateString('fr-FR')} · ${fmtQty(r.qt_recu)}</div>
+            ${of.can_write ? `<button class="ghost" data-undo="${r.id}" title="Annuler cette réception">✕</button>` : ''}
+          </div>`).join('') : ''}
+        ${canReceive ? `
+          <label>Quantité reçue</label>
+          <input id="of-qty" type="number" min="0.01" max="${of.reste}" step="0.01" value="${of.reste}" />
+          <label>Date de réception</label>
+          <input id="of-date" type="date" max="${iso}" value="${iso}" />
+          <button class="primary" id="of-go"></button>
+          <div class="error" id="of-error"></div>` : (of.reste <= 0 ? '<div class="success" style="margin-top:8px">Cet OF est entièrement soldé.</div>' : '')}
+        <button class="ghost" id="of-close" style="width:100%;margin-top:8px">Fermer</button>`;
+      sheet.querySelector('#of-close').onclick = close;
+
+      const qtyEl = sheet.querySelector('#of-qty'), goEl = sheet.querySelector('#of-go');
+      if (qtyEl) {
+        // The button says what the result will be, as in the desktop app.
+        const label = () => {
+          const q = Number(qtyEl.value);
+          goEl.textContent = q > 0 && Math.abs(q - of.reste) < 1e-4 ? '✓ Solder l\'OF' : 'Réceptionner (partiel)';
+        };
+        qtyEl.oninput = label; label();
+        goEl.onclick = async () => {
+          const err = sheet.querySelector('#of-error'); err.textContent = '';
+          const qt = Number(qtyEl.value);
+          if (!(qt > 0)) { err.textContent = 'Saisissez une quantité supérieure à 0.'; return; }
+          if (qt > of.reste + 1e-4) { err.textContent = `Maximum : ${fmtQty(of.reste)}.`; return; }
+          goEl.disabled = true;
+          try {
+            const r = await api(`/atelier/of/${idOf}/receptions`, { method: 'POST', body: { qt, date: sheet.querySelector('#of-date').value } });
+            changed = true;
+            showToast(r.etat === 'Soldé' ? '✓ OF soldé' : '✓ Réception enregistrée (partiellement soldé)');
+            draw();
+          } catch (e) { err.textContent = e.message; goEl.disabled = false; }
+        };
+      }
+      sheet.querySelectorAll('[data-undo]').forEach((b) => {
+        b.onclick = async () => {
+          if (!confirm('Annuler cette réception ? La quantité sera retirée du stock.')) return;
+          try {
+            await api(`/atelier/of/${idOf}/receptions/${b.dataset.undo}`, { method: 'DELETE' });
+            changed = true; showToast('Réception annulée'); draw();
+          } catch (e) { showToast(e.message, true); }
+        };
+      });
+    }
+    draw();
   }
 
   // ---- Reception tab ---------------------------------------------------
@@ -1224,8 +1506,8 @@
   }
 
   // ---- BRM (return) tab -----------------------------------------------
-  async function renderBrm() {
-    const main = document.getElementById('main');
+  async function renderBrm(root) {
+    const main = root || document.getElementById('main');
     main.innerHTML = `
       <div class="card">
         <h2>Retour magasin (BRM)</h2>
@@ -1300,6 +1582,7 @@
           <h2 style="margin:0">Articles à retourner</h2>
           <button class="ghost" id="brm-return-all-${idBsm}">Tout retourner</button>
         </div>
+        <button class="ghost" id="brm-scan-${idBsm}" style="width:100%;margin-top:8px">📡 Scanner les articles (NFC)</button>
         <div id="brm-return-lines-${idBsm}"></div>
         <button class="primary" id="submit-brm-${idBsm}">Valider le retour</button>
         <div class="error" id="brm-error-${idBsm}"></div>
@@ -1318,6 +1601,7 @@
       state.brmReturnLines.forEach((l) => { l.qty = l.max; });
       renderBrmReturnLines(idBsm, detail);
     };
+    document.getElementById(`brm-scan-${idBsm}`).onclick = () => scanIntoBrm(idBsm, detail);
     document.getElementById(`submit-brm-${idBsm}`).onclick = () => submitBrm(idBsm, detail);
   }
 
@@ -1372,11 +1656,12 @@
   }
 
   // ---- Notifications ---------------------------------------------------
-  async function refreshBellBadge() {
+  async function refreshBellBadge(force) {
     const badge = document.getElementById('bell-badge');
     if (!badge) return;
+    if (!force && skipBackground()) return;   // mobile data: wait for the next manual refresh
     try {
-      const { count } = await api('/notifications/unread-count');
+      const { count } = await api('/notifications/unread-count', force ? { fresh: true } : {});
       badge.style.display = count > 0 ? 'inline-block' : 'none';
       badge.textContent = count > 9 ? '9+' : String(count);
     } catch (e) { /* silent - non-critical */ }
@@ -1435,19 +1720,27 @@
       // native side reports the token before anyone's listening for it
       // (which happens often, it's fast), the event is lost for good.
       plugin.addListener('registration', async (token) => {
+        // Don't call the server at every launch: only when the token or the
+        // user changed, or once a week (in case the server lost it).
+        const stamp = `${state.user.id}:${token.value}`;
+        try {
+          const prev = JSON.parse(localStorage.getItem('gmao_push_registered') || 'null');
+          if (prev && prev.stamp === stamp && Date.now() - prev.at < 7 * 86400000) return;
+        } catch (e) {}
         console.log('Push token received, registering with backend…');
         try {
           await api('/notifications/register-token', {
             method: 'POST',
             body: { token: token.value, platform: 'android' }
           });
+          try { localStorage.setItem('gmao_push_registered', JSON.stringify({ stamp, at: Date.now() })); } catch (e) {}
           console.log('Push token registered with backend successfully.');
         } catch (e) { console.warn('Failed to register push token:', e.message); }
       });
       plugin.addListener('registrationError', (err) => console.warn('Push registration error:', err));
       plugin.addListener('pushNotificationReceived', (notification) => {
         showToast(notification.title || notification.body || 'Nouvelle notification');
-        refreshBellBadge();
+        refreshBellBadge(true);
       });
 
       await plugin.register();
@@ -1458,16 +1751,11 @@
   }
 
   // ---- Validation tab (managers) ---------------------------------------
-  async function renderValidation() {
-    const main = document.getElementById('main');
-    main.innerHTML = `
-      <div class="card"><h2>Sorties (BSM) en attente</h2><div id="pending-bsm"><div class="empty">Chargement…</div></div></div>
-      <div class="card"><h2>Retours (BRM) en attente</h2><div id="pending-brm"><div class="empty">Chargement…</div></div></div>
-    `;
-    // Fire both requests at once instead of waiting for BSM to finish before
-    // starting BRM - halves the wait since they don't depend on each other.
-    loadPendingBsm();
-    loadPendingBrm();
+  async function renderPending(root, kind) {
+    root.innerHTML = kind === 'bsm'
+      ? '<div class="card"><h2>Sorties (BSM) en attente</h2><div id="pending-bsm"><div class="empty">Chargement…</div></div></div>'
+      : '<div class="card"><h2>Retours (BRM) en attente</h2><div id="pending-brm"><div class="empty">Chargement…</div></div></div>';
+    if (kind === 'bsm') loadPendingBsm(); else loadPendingBrm();
   }
 
   async function loadPendingBsm() {
@@ -1534,27 +1822,16 @@
     try {
       await api(`/${kind}/pending/${id}/${action}`, { method: 'POST', body: reason ? { reason } : {} });
       showToast(action === 'approve' ? `✓ Demande #${id} validée` : `✕ Demande #${id} refusée`);
-      renderValidation();
+      renderTab();
     } catch (e) {
       showToast(e.message, true);
     }
   }
 
   // ---- Historique tab (managers) ----------------------------------------
-  async function renderHistorique() {
-    const main = document.getElementById('main');
-    main.innerHTML = `
-      <div class="card">
-        <div class="segmented" id="hist-kind">
-          <button data-v="bsm" class="selected">Sorties (BSM)</button>
-          <button data-v="brm">Retours (BRM)</button>
-        </div>
-      </div>
-      <div class="card" id="hist-results"><div class="empty">Chargement…</div></div>
-    `;
-    wireTypeSegmented('hist-kind');
-    document.querySelectorAll('#hist-kind button').forEach((b) => b.onclick = () => setTimeout(() => loadHistorique(b.dataset.v), 0));
-    loadHistorique('bsm');
+  async function renderHistorique(root, kind) {
+    root.innerHTML = '<div class="card" id="hist-results"><div class="empty">Chargement…</div></div>';
+    loadHistorique(kind);
   }
 
   async function loadHistorique(kind) {
@@ -1686,6 +1963,170 @@
     }
   }
 
+
+  // ---- NFC tags --------------------------------------------------------
+  // A tag only carries its UID; the article it stands for is stored on the
+  // server (/nfc). The native side is the small NfcUid plugin (MainActivity).
+  function nfcPlugin() {
+    if (!window.Capacitor?.isNativePlatform?.()) return null;
+    return window.Capacitor.Plugins?.NfcUid || window.Capacitor.registerPlugin?.('NfcUid') || null;
+  }
+
+  // Opens a full-screen "hold the phone against the tag" sheet. Calls
+  // onUid(uid) for every tag read until the person taps the close button.
+  // onUid may return a short status string that is shown under the prompt.
+  async function openNfcScanner({ title, hint, onUid }) {
+    const nfc = nfcPlugin();
+    if (!nfc) { showToast('Le NFC n\'est disponible que dans l\'application Android.', true); return; }
+    try {
+      await nfc.start();
+    } catch (e) {
+      const m = String(e?.message || e);
+      showToast(m.includes('DISABLED') ? 'Activez le NFC dans les réglages du téléphone.'
+        : m.includes('NOT_SUPPORTED') ? 'Ce téléphone n\'a pas de NFC.' : 'NFC indisponible : ' + m, true);
+      return;
+    }
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:50;display:flex;align-items:flex-end';
+    overlay.innerHTML = `
+      <div style="background:var(--panel);width:100%;border-radius:16px 16px 0 0;padding:20px;padding-bottom:calc(20px + var(--safe-bottom));text-align:center">
+        <div style="font-size:2.6rem">📡</div>
+        <h2 style="margin:6px 0">${escapeHtml(title)}</h2>
+        <div class="muted">${escapeHtml(hint || 'Approchez le téléphone du tag.')}</div>
+        <div id="nfc-status" style="margin:14px 0;min-height:2.6em;font-weight:600"></div>
+        <button class="primary" id="nfc-close">Terminer</button>
+      </div>`;
+    document.body.appendChild(overlay);
+    const status = overlay.querySelector('#nfc-status');
+    let closed = false, busy = false, last = '', lastAt = 0;
+    const handle = await nfc.addListener('tag', async (ev) => {
+      if (closed || !ev?.uid) return;
+      // The same tag is reported repeatedly while it stays in range: ignore
+      // the same UID for 1.5 s, and ignore reads while one is being handled.
+      const now = Date.now();
+      if (busy || (ev.uid === last && now - lastAt < 1500)) return;
+      busy = true; last = ev.uid; lastAt = now;
+      try {
+        status.className = '';
+        status.textContent = (await onUid(ev.uid)) || '✓ Tag lu';
+      } catch (e) {
+        status.className = 'error';
+        status.textContent = e.message;
+      } finally {
+        busy = false;
+        lastAt = Date.now();
+      }
+    });
+    const close = () => {
+      if (closed) return;
+      closed = true;
+      try { handle.remove(); } catch (e) {}
+      nfc.stop().catch(() => {});
+      overlay.remove();
+    };
+    overlay.querySelector('#nfc-close').onclick = close;
+    return close;
+  }
+
+  function resolveNfcTag(uid) {
+    return api('/nfc/resolve?uid=' + encodeURIComponent(uid));
+  }
+
+  // BSM: each scan adds the article, or +1 if it's already in the list.
+  function scanIntoBsm() {
+    openNfcScanner({
+      title: 'Scanner les articles',
+      hint: 'Un passage = +1. Passez le même tag plusieurs fois pour augmenter la quantité.',
+      onUid: async (uid) => {
+        const { article } = await resolveNfcTag(uid);
+        const existing = state.bsmLines.find((l) => l.id === article.id);
+        if (existing) existing.qty = (Number(existing.qty) || 0) + 1;
+        else state.bsmLines.push({ id: article.id, name: article.designation, qty: 1 });
+        renderLines('lines', state.bsmLines);
+        const l = state.bsmLines.find((x) => x.id === article.id);
+        return `✓ ${article.designation} × ${l.qty}`;
+      }
+    });
+  }
+
+  // BRM: the first scan clears the quantities (all lines start at "return
+  // everything"), then each scan adds 1 to the scanned article, capped at
+  // what was issued. An article that isn't in this BSM is refused.
+  function scanIntoBrm(idBsm, detail) {
+    let fresh = true;
+    openNfcScanner({
+      title: 'Scanner les articles à retourner',
+      hint: 'Un passage = +1 (maximum : la quantité sortie).',
+      onUid: async (uid) => {
+        const { article } = await resolveNfcTag(uid);
+        const line = state.brmReturnLines.find((l) => l.id_article === article.id);
+        if (!line) throw new Error(`« ${article.designation} » n'est pas dans ce BSM.`);
+        if (fresh) { state.brmReturnLines.forEach((l) => { l.qty = 0; }); fresh = false; }
+        if (line.qty >= line.max) throw new Error(`« ${article.designation} » : déjà ${line.max} / ${line.max}.`);
+        line.qty = Math.min(line.max, (Number(line.qty) || 0) + 1);
+        renderBrmReturnLines(idBsm, detail);
+        return `✓ ${article.designation} × ${line.qty} / ${line.max}`;
+      }
+    });
+  }
+
+  // Managers: list / add / remove the tags attached to one article.
+  async function openArticleTags(idArticle, designation) {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:40;display:flex;align-items:flex-end';
+    overlay.innerHTML = `
+      <div style="background:var(--panel);width:100%;max-height:75vh;overflow-y:auto;border-radius:16px 16px 0 0;padding:16px;padding-bottom:calc(16px + var(--safe-bottom))">
+        <h2 style="margin-top:0">Tags NFC</h2>
+        <div class="muted" style="margin-bottom:10px">${escapeHtml(designation)}</div>
+        <div id="tags-list"><div class="empty">Chargement…</div></div>
+        <button class="primary" id="tags-add">📡 Associer un tag</button>
+        <button class="ghost" id="tags-close" style="width:100%;margin-top:8px">Fermer</button>
+      </div>`;
+    document.body.appendChild(overlay);
+    const list = overlay.querySelector('#tags-list');
+    async function refresh() {
+      try {
+        const tags = await api('/nfc/article/' + idArticle);
+        list.innerHTML = tags.length === 0 ? '<div class="empty">Aucun tag associé</div>' : tags.map((t) => `
+          <div class="line-item">
+            <div class="line-name">${escapeHtml(t.uid)}</div>
+            <button class="ghost" data-uid="${escapeHtml(t.uid)}">✕</button>
+          </div>`).join('');
+        list.querySelectorAll('button[data-uid]').forEach((b) => {
+          b.onclick = async () => {
+            if (!confirm('Retirer ce tag de l\'article ?')) return;
+            try { await api('/nfc/tags/' + encodeURIComponent(b.dataset.uid), { method: 'DELETE' }); refresh(); }
+            catch (e) { showToast(e.message, true); }
+          };
+        });
+      } catch (e) {
+        list.innerHTML = `<div class="error">${escapeHtml(e.message)}</div>`;
+      }
+    }
+    overlay.querySelector('#tags-close').onclick = () => overlay.remove();
+    overlay.querySelector('#tags-add').onclick = async () => {
+      let closeScanner;
+      closeScanner = await openNfcScanner({
+        title: 'Associer un tag',
+        hint: `Approchez le tag à associer à « ${designation} ».`,
+        onUid: async (uid) => {
+          try {
+            await api('/nfc/tags', { method: 'POST', body: { uid, id_article: idArticle } });
+          } catch (e) {
+            // Tag already attached to another article: ask before moving it.
+            if (!/déjà associé/.test(e.message) || !confirm(e.message + '\n\nLe réassigner à cet article ?')) throw e;
+            await api('/nfc/tags', { method: 'POST', body: { uid, id_article: idArticle, replace: true } });
+          }
+          refresh();
+          if (closeScanner) closeScanner();
+          showToast('✓ Tag associé');
+          return '✓ Tag associé';
+        }
+      });
+    };
+    refresh();
+  }
+
   // ---- Shared widgets -----------------------------------------------
   let toastTimer = null;
   function showToast(message, isError = false) {
@@ -1721,11 +2162,14 @@
   function wireArticlePicker(inputId, suggestionsId, onPick) {
     const input = document.getElementById(inputId);
     const box = document.getElementById(suggestionsId);
+    let inflight = null;
     input.oninput = debounce(async () => {
       const q = input.value.trim();
-      if (!q) { box.innerHTML = ''; return; }
+      if (inflight) inflight.abort();          // a newer search replaces the old one
+      if (q.length < 2) { box.innerHTML = q ? '<div class="muted">Tapez au moins 2 lettres…</div>' : ''; return; }
+      inflight = new AbortController();
       try {
-        const rows = await api('/articles?search=' + encodeURIComponent(q));
+        const rows = await api('/articles?limit=8&search=' + encodeURIComponent(q), { signal: inflight.signal });
         box.innerHTML = rows.slice(0, 8).map((a) => `
           <div class="article-row" data-id="${a.id}" data-name="${escapeHtml(a.designation)}" style="cursor:pointer">
             <div class="name">${escapeHtml(a.designation)}</div>
@@ -1739,9 +2183,10 @@
           };
         });
       } catch (e) {
+        if (e.cancelled) return;
         box.innerHTML = `<div class="error">${escapeHtml(e.message)}</div>`;
       }
-    }, 250);
+    }, 400);
   }
 
   function addLine(list, article, containerId) {

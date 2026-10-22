@@ -39,4 +39,7 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.NFC" />
+    <!-- NFC is optional: the app still installs on phones without it. -->
+    <uses-feature android:name="android.hardware.nfc" android:required="false" />
 </manifest>
