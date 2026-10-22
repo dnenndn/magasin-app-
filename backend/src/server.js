@@ -25,6 +25,7 @@ const movementsRoutes = require('./routes/movements');
 const daRoutes = require('./routes/da');
 const nfcRoutes = require('./routes/nfc');
 const atelierRoutes = require('./routes/atelier');
+const productionRoutes = require('./routes/production');
 
 const app = express();
 
@@ -54,6 +55,7 @@ app.use('/api/movements', movementsRoutes);
 app.use('/api/da', daRoutes);
 app.use('/api/nfc', nfcRoutes);
 app.use('/api/atelier', atelierRoutes);
+app.use('/api/production', productionRoutes);
 
 app.use((err, _req, res, _next) => {
   console.error(err);

@@ -416,6 +416,31 @@
     40% { transform: translateY(-8px); opacity: 1; }
   }
 
+  /* Magasin / Production menus + production report screens */
+  .big-menu { display: grid; gap: 12px; }
+  .big-btn {
+    display: flex; align-items: center; gap: 16px; width: 100%;
+    padding: 22px 18px; text-align: left;
+    background: var(--panel); color: var(--ink);
+    border: 1px solid var(--line); border-radius: var(--radius);
+    font: inherit; cursor: pointer;
+  }
+  .big-btn:active { background: var(--panel-2); }
+  .big-btn .bb-icon { font-size: 2.2rem; line-height: 1; }
+  .big-btn .bb-text { flex: 1; display: flex; flex-direction: column; gap: 3px; }
+  .big-btn .bb-label { font-weight: 700; font-size: 1.15rem; }
+  .big-btn .bb-sub { font-size: 0.8rem; color: var(--muted); }
+  .big-btn .bb-arrow { font-size: 1.6rem; color: var(--muted); }
+  #backbar { max-width: 720px; margin: 0 auto; padding: 10px 16px 0; }
+  #backbar:empty { display: none; }
+  .back-btn { padding: 7px 14px; font-size: 0.9rem; }
+  .prod-block > summary { cursor: pointer; font-weight: 600; font-size: 0.98rem; }
+  .line-item input.pf { width: 96px; text-align: right; }
+  .hours-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 6px; }
+  .hours-grid.two { grid-template-columns: repeat(2, 1fr); }
+  .hours-grid.three { grid-template-columns: repeat(3, 1fr); }
+  .hours-grid input.pf, .hours-grid select { width: 100%; padding: 9px 6px; font-size: 0.92rem; text-align: left; }
+  .hours-grid > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 </style>
 </head>
 <body>
@@ -482,6 +507,7 @@
     bsmLines: [],
     daLines: [],
     sub: { bsm: 'new', brm: 'new', da: 'new', atelier: 'open' },
+    prod: null,
     daOptions: null,
     receptionCommande: null,
     receptionLines: [],
@@ -634,17 +660,14 @@
 
   function render() {
     if (!state.token) return renderLogin();
-    // One button per business object (BSM / BRM / DA). Creating, validating
-    // and the history of each live inside it, as sub-sections (renderHub).
+    // Two entries cover the business objects: Magasin (BSM / BRM / DA, plus
+    // Réception for managers) and Production (rapports + ordres de fabrication).
     const tabs = [
       tabButton('accueil', '🏠', 'Accueil'),
       tabButton('stock', '📦', 'Stock'),
-      tabButton('bsm', '📤', 'Sortie'),
-      tabButton('brm', '↩️', 'Retour')
+      tabButton('magasin', '🏬', 'Magasin'),
+      tabButton('production', '🏭', 'Production')
     ];
-    if (canCreateDa()) tabs.push(tabButton('da', '🛒', 'Achat'));
-    tabs.push(tabButton('atelier', '🏭', 'Atelier'));
-    if (isManager()) tabs.push(tabButton('reception', '📥', 'Réception'));
     if (isAdmin()) {
       tabs.push(tabButton('users', '👤', 'Utilisateurs'));
     }
@@ -665,6 +688,7 @@
           <button class="icon-btn" id="logout" title="Déconnexion">🚪</button>
         </div>
       </header>
+      <div id="backbar"></div>
       <main id="main"></main>
       <nav class="tabs">${tabs.join('')}</nav>
     `;
@@ -679,15 +703,25 @@
   }
 
   function tabButton(id, icon, label) {
-    return `<button data-tab="${id}" class="${state.tab === id ? 'active' : ''}">
+    return `<button data-tab="${id}" class="${(SUBVIEWS[state.tab] || state.tab) === id ? 'active' : ''}">
       <span class="icon">${icon}</span>${label}
     </button>`;
   }
 
+  // Screens reached from a menu: view -> the bottom-nav entry that owns it.
+  const SUBVIEWS = { bsm: 'magasin', brm: 'magasin', da: 'magasin', reception: 'magasin', atelier: 'production', rapports: 'production' };
+  const GROUP_LABEL = { magasin: 'Magasin', production: 'Production' };
+
   function renderTab() {
-    document.querySelectorAll('nav.tabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === state.tab));
+    const group = SUBVIEWS[state.tab] || state.tab;
+    document.querySelectorAll('nav.tabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === group));
+    if (SUBVIEWS[state.tab]) setBack(GROUP_LABEL[group], () => { state.tab = group; state.error = ''; state.notice = ''; renderTab(); });
+    else setBack(null);
     if (state.tab === 'accueil') return renderAccueil();
     if (state.tab === 'stock') return renderStock();
+    if (state.tab === 'magasin') return renderMagasin();
+    if (state.tab === 'production') return renderProductionMenu();
+    if (state.tab === 'rapports') return renderRapports();
     if (state.tab === 'bsm') return renderHub('bsm', { new: renderBsm, pending: (r) => renderPending(r, 'bsm'), history: (r) => renderHistorique(r, 'bsm') });
     if (state.tab === 'brm') return renderHub('brm', { new: renderBrm, pending: (r) => renderPending(r, 'brm'), history: (r) => renderHistorique(r, 'brm') });
     if (state.tab === 'da') return renderHub('da', { new: renderDa, mine: renderDaMine });
@@ -1384,6 +1418,385 @@
       });
     }
     draw();
+  }
+
+  // ---- Magasin / Production menus -------------------------------------
+  // Two bottom-nav entries. Each opens a menu of big buttons; a button opens
+  // the screen it names, with a "‹" button to come back to the menu.
+  function bigButton(id, icon, label, sub) {
+    return `<button type="button" class="big-btn" data-go="${id}">
+      <span class="bb-icon">${icon}</span>
+      <span class="bb-text"><span class="bb-label">${label}</span><span class="bb-sub">${sub}</span></span>
+      <span class="bb-arrow">›</span>
+    </button>`;
+  }
+
+  function renderMagasin() {
+    const items = [bigButton('bsm', '📤', 'BSM', 'Bon de sortie magasin')];
+    items.push(bigButton('brm', '↩️', 'BRM', 'Bon de retour magasin'));
+    if (canCreateDa()) items.push(bigButton('da', '🛒', 'DA', "Demande d'achat"));
+    if (isManager()) items.push(bigButton('reception', '📥', 'Réception', 'Bons de commande en attente'));
+    document.getElementById('main').innerHTML = `<div class="big-menu">${items.join('')}</div>`;
+    document.querySelectorAll('.big-btn').forEach((b) => {
+      b.onclick = () => { state.tab = b.dataset.go; state.error = ''; state.notice = ''; renderTab(); };
+    });
+  }
+
+  function renderProductionMenu() {
+    document.getElementById('main').innerHTML = `<div class="big-menu">
+      ${bigButton('rapports', '📝', 'Rapport de production', 'Remplir les rapports Jour / Soir / Nuit')}
+      ${bigButton('atelier', '🏭', 'Ordres de fabrication', 'Consulter et solder les OF')}
+    </div>`;
+    document.querySelectorAll('.big-btn').forEach((b) => {
+      b.onclick = () => { state.tab = b.dataset.go; state.error = ''; state.notice = ''; renderTab(); };
+    });
+  }
+
+  // ---- Production reports (mirrors the desktop "Rapport" screens) --------
+  const POSTES = ['Jour', 'Soir', 'Nuit'];
+  const PROD_SECTIONS = [
+    ['fabrication', '🧱', 'Fabrication', 'Produits, tonnage, mesures, chef d\'équipe'],
+    ['four', '🔥', 'Four', 'Entrée, sortie, mesures'],
+    ['preparation', '⚗️', 'Préparation', 'Mesures, A/S, général'],
+    ['fuel', '⛽', 'Fuel', 'Consommations'],
+    ['emballage', '📦', 'Emballage', 'Produits, palettes, chef d\'équipe']
+  ];
+  const isoDate = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const frDate = (iso) => String(iso).split('-').reverse().join('/');
+
+  function setBack(label, fn) {
+    const bar = document.getElementById('backbar');
+    if (!bar) return;
+    if (!label) { bar.innerHTML = ''; return; }
+    bar.innerHTML = `<button type="button" class="ghost back-btn" id="back-btn">‹ ${escapeHtml(label)}</button>`;
+    document.getElementById('back-btn').onclick = fn;
+  }
+
+  function prodState() {
+    if (!state.prod) state.prod = { view: 'list', id: null, section: null, unit: {}, data: null, date: '', poste: '' };
+    return state.prod;
+  }
+
+  function renderRapports() {
+    const P = prodState();
+    if (P.view === 'list') return renderRapportList();
+    if (!P.data) return openReport(P.id);
+    if (P.view === 'report') return renderRapportHome();
+    return renderRapportSection();
+  }
+
+  async function renderRapportList() {
+    const P = prodState();
+    const main = document.getElementById('main');
+    setBack('Production', () => { state.tab = 'production'; renderTab(); });
+    main.innerHTML = '<div class="card"><div class="empty">Chargement…</div></div>';
+    let res;
+    try { res = await api('/production/reports'); }
+    catch (e) { main.innerHTML = `<div class="card"><div class="error">${escapeHtml(e.message)}</div></div>`; return; }
+    if (state.tab !== 'rapports' || P.view !== 'list') return;
+    const today = isoDate();
+    if (!P.date) P.date = today;
+    main.innerHTML = `
+      ${res.can_write ? `<div class="card">
+        <h2>Nouveau rapport</h2>
+        <label>Date</label>
+        <input id="rp-date" type="date" max="${today}" value="${P.date}" />
+        <label>Poste</label>
+        <div class="segmented" id="rp-poste">${POSTES.map((p) => `<button type="button" data-v="${p}" class="${p === P.poste ? 'selected' : ''}">${p}</button>`).join('')}</div>
+        <button class="primary" id="rp-create" style="margin-top:12px">Créer le rapport</button>
+        <div class="error" id="rp-err"></div>
+      </div>` : ''}
+      <div class="card">
+        <h2>Rapports récents</h2>
+        <div id="rp-list">${res.reports.length === 0 ? '<div class="empty">Aucun rapport</div>' : res.reports.map((r) => `
+          <div class="article-row" data-rp="${r.id}" style="cursor:pointer">
+            <div><div class="name">${frDate(r.date_rapport)} · ${escapeHtml(r.poste)}</div><div class="code">Rapport n° ${r.id}</div></div>
+            ${res.can_write ? `<button type="button" class="ghost" data-del="${r.id}" title="Supprimer ce rapport">✕</button>` : '<span class="muted">›</span>'}
+          </div>`).join('')}</div>
+      </div>`;
+    main.querySelectorAll('[data-rp]').forEach((row) => {
+      row.onclick = (e) => { if (e.target.closest('[data-del]')) return; openReport(Number(row.dataset.rp)); };
+    });
+    main.querySelectorAll('[data-del]').forEach((b) => {
+      b.onclick = async () => {
+        if (!confirm('Supprimer ce rapport ? Le tonnage de fabrication sera retiré des compteurs.')) return;
+        try { await api('/production/reports/' + b.dataset.del, { method: 'DELETE' }); showToast('Rapport supprimé'); renderRapportList(); }
+        catch (e) { showToast(e.message, true); }
+      };
+    });
+    const create = document.getElementById('rp-create');
+    if (create) {
+      document.getElementById('rp-date').onchange = (e) => { P.date = e.target.value; };
+      main.querySelectorAll('#rp-poste button').forEach((b) => {
+        b.onclick = () => { P.poste = b.dataset.v; main.querySelectorAll('#rp-poste button').forEach((x) => x.classList.toggle('selected', x === b)); };
+      });
+      create.onclick = async () => {
+        const err = document.getElementById('rp-err'); err.textContent = '';
+        if (!P.poste) { err.textContent = 'Choisissez le poste.'; return; }
+        create.disabled = true;
+        try {
+          const r = await api('/production/reports', { method: 'POST', body: { date: P.date, poste: P.poste } });
+          showToast('✓ Rapport créé');
+          P.poste = '';
+          openReport(r.id);
+        } catch (e) { err.textContent = e.message; create.disabled = false; }
+      };
+    }
+  }
+
+  async function openReport(id) {
+    const P = prodState();
+    const main = document.getElementById('main');
+    P.id = id; P.view = 'report'; P.section = null; P.data = null;
+    setBack('Rapports', () => { P.view = 'list'; P.data = null; renderRapports(); });
+    main.innerHTML = '<div class="card"><div class="empty">Chargement…</div></div>';
+    try { await reloadReport(); }
+    catch (e) { main.innerHTML = `<div class="card"><div class="error">${escapeHtml(e.message)}</div></div>`; return; }
+    renderRapports();
+  }
+
+  async function reloadReport() {
+    const P = prodState();
+    P.data = await api('/production/reports/' + P.id, { fresh: true });
+  }
+
+  function renderRapportHome() {
+    const P = prodState(); const d = P.data;
+    const main = document.getElementById('main');
+    setBack('Rapports', () => { P.view = 'list'; P.data = null; renderRapports(); });
+    main.innerHTML = `
+      <div class="card">
+        <h2>Rapport du ${frDate(d.date_rapport)} · ${escapeHtml(d.poste)}</h2>
+        ${d.can_write ? '<div class="muted">Touchez une section pour la remplir.</div>' : '<div class="muted">Lecture seule.</div>'}
+      </div>
+      <div class="big-menu">${PROD_SECTIONS.map(([k, icon, label, sub]) => bigButton(k, icon, label, sub)).join('')}</div>`;
+    main.querySelectorAll('.big-btn').forEach((b) => {
+      b.onclick = () => { P.view = 'section'; P.section = b.dataset.go; renderRapports(); };
+    });
+  }
+
+  // -- helpers shared by the section screens
+  const pIn = (attrs, v, ro) => `<input class="pf" type="text" inputmode="decimal" autocomplete="off" ${attrs} value="${v === null || v === undefined ? '' : escapeHtml(String(Math.round(Number(v) * 10000) / 10000))}" ${ro ? 'disabled' : ''} />`;
+  const pRow = (name, inner) => `<div class="line-item"><div class="line-name">${escapeHtml(name)}</div>${inner}</div>`;
+
+  function unitPicker(section, units) {
+    const P = prodState();
+    if (units.length === 0) return { unit: null, html: '<div class="card"><div class="empty">Aucune unité pour cette section.</div></div>' };
+    let cur = units.find((u) => u.id_unite === P.unit[section]) || units[0];
+    P.unit[section] = cur.id_unite;
+    const html = units.length > 1
+      ? `<div class="card" style="padding:10px"><div class="segmented" id="unit-nav">${units.map((u) => `<button type="button" data-u="${u.id_unite}" class="${u.id_unite === cur.id_unite ? 'selected' : ''}">${escapeHtml(u.unite)}</button>`).join('')}</div></div>`
+      : `<div class="muted" style="margin:0 2px 8px">${escapeHtml(cur.unite)}</div>`;
+    return { unit: cur, html };
+  }
+
+  // One group of fields with its own save button.
+  function block(title, body, id, canWrite, note) {
+    return `<details class="card prod-block" ${id === 'open' ? 'open' : ''}>
+      <summary>${title}</summary>
+      ${note ? `<div class="muted" style="margin:6px 0">${note}</div>` : ''}
+      ${body}
+      ${canWrite ? '<button type="button" class="primary prod-save" style="margin-top:12px">Enregistrer</button>' : ''}
+      <div class="error"></div>
+    </details>`;
+  }
+
+  // Re-draws the current screen and keeps the same blocks open.
+  async function rerenderKeepOpen() {
+    const open = [...document.querySelectorAll('#main details')].map((x) => x.open);
+    await renderRapports();
+    document.querySelectorAll('#main details').forEach((x, k) => { x.open = !!open[k]; });
+  }
+
+  // Pairs the blocks that have a save button (in order) with saves[i](blockEl)
+  // -> { method?, path, body, toast? }; a save may throw a message to show.
+  function wireBlocks(root, saves) {
+    const els = [...root.querySelectorAll('details.prod-block:not(.anomalies)')].filter((e) => e.querySelector('.prod-save'));
+    els.forEach((el, i) => {
+      const btn = el.querySelector('.prod-save');
+      if (!saves[i]) return;
+      btn.onclick = async () => {
+        const err = el.querySelector('.error'); err.textContent = '';
+        let req;
+        try { req = saves[i](el); } catch (e) { err.textContent = e.message; return; }
+        btn.disabled = true;
+        try {
+          const r = await api(req.path, { method: req.method || 'PUT', body: req.body });
+          await reloadReport();
+          showToast(req.toast ? req.toast(r) : '✓ Enregistré');
+          await rerenderKeepOpen();
+        } catch (e) { err.textContent = e.message; btn.disabled = false; }
+      };
+    });
+  }
+
+  const readNum = (el) => el.value.trim();
+  const rowsOf = (el, attr, fields) => [...el.querySelectorAll(`[data-${attr}]`)].reduce((acc, inp) => {
+    const id = Number(inp.dataset[attr]);
+    let row = acc.find((r) => r.id === id);
+    if (!row) { row = { id }; acc.push(row); }
+    row[inp.dataset.f || 'valeur'] = readNum(inp);
+    return acc;
+  }, []);
+
+  function anomalyBlock(d, unit) {
+    const list = d.anomalies.filter((a) => a.id_unite === unit.id_unite);
+    const opts = d.anomalie_options[unit.id_unite] || [];
+    return `<details class="card prod-block anomalies" data-unit="${unit.id_unite}">
+      <summary>Arrêts / anomalies${list.length ? ` (${list.length})` : ''}</summary>
+      ${list.map((a) => `<div class="line-item"><div class="line-name">${escapeHtml(a.anomalie)}<br><span class="muted">${a.duree} min</span></div>${d.can_write ? `<button type="button" class="ghost" data-adel="${a.id}">✕</button>` : ''}</div>`).join('')}
+      ${d.can_write && opts.length ? `
+        <label>Anomalie</label>
+        <select class="an-sel">${opts.map((o) => `<option value="${o.id}">${escapeHtml(o.anomalie)}</option>`).join('')}</select>
+        <label>Durée (minutes)</label>
+        <input class="an-dur" type="text" inputmode="numeric" placeholder="ex. 45" />
+        <button type="button" class="primary an-add" style="margin-top:12px">Ajouter</button>` : ''}
+      <div class="error"></div>
+    </details>`;
+  }
+
+  function wireAnomalies(root) {
+    const P = prodState();
+    root.querySelectorAll('details.anomalies').forEach((el) => {
+      const unit = Number(el.dataset.unit);
+      const err = el.querySelector('.error');
+      const refresh = async (msg) => { await reloadReport(); showToast(msg); await rerenderKeepOpen(); };
+      const add = el.querySelector('.an-add');
+      if (add) add.onclick = async () => {
+        err.textContent = '';
+        const duree = Number(el.querySelector('.an-dur').value.trim());
+        if (!Number.isInteger(duree) || duree <= 0) { err.textContent = 'Durée : nombre entier de minutes supérieur à 0.'; return; }
+        add.disabled = true;
+        try {
+          await api(`/production/reports/${P.id}/anomalies`, { method: 'POST', body: { id_unite: unit, id_anomalie: Number(el.querySelector('.an-sel').value), duree } });
+          await refresh('✓ Anomalie ajoutée');
+        } catch (e) { err.textContent = e.message; add.disabled = false; }
+      };
+      el.querySelectorAll('[data-adel]').forEach((b) => {
+        b.onclick = async () => {
+          if (!confirm('Supprimer cette anomalie ?')) return;
+          try { await api(`/production/reports/${P.id}/anomalies/${b.dataset.adel}`, { method: 'DELETE' }); await refresh('Anomalie supprimée'); }
+          catch (e) { err.textContent = e.message; }
+        };
+      });
+    });
+  }
+
+  function chefBlock(unit, chefs, ro) {
+    return block("Chef d'équipe", `
+      <select class="cf-sel" ${ro ? 'disabled' : ''}>
+        <option value="0">— choisir —</option>
+        ${chefs.map((c) => `<option value="${c.id}" ${c.id === unit.id_cf ? 'selected' : ''}>${escapeHtml(c.nom)}</option>`).join('')}
+      </select>`, '', !ro);
+  }
+
+  async function renderRapportSection() {
+    const P = prodState(); const d = P.data; const sec = P.section;
+    const main = document.getElementById('main');
+    const meta = PROD_SECTIONS.find((s) => s[0] === sec);
+    setBack('Rapport', () => { P.view = 'report'; P.section = null; renderRapports(); });
+    const ro = !d.can_write;
+    const base = `/production/reports/${P.id}`;
+    const head = `<div class="card"><h2>${meta[1]} ${meta[2]} · ${frDate(d.date_rapport)} · ${escapeHtml(d.poste)}</h2>${ro ? '<div class="muted">Lecture seule.</div>' : ''}</div>`;
+
+    if (sec === 'fuel') {
+      main.innerHTML = head + block('Consommations de fuel', d.fuel.map((f) => pRow(`Qt Fuel ${f.label}`, pIn(`data-fuel="${f.type}"`, f.quantite, ro))).join(''), 'open', !ro, 'Laissez vide un champ non renseigné.');
+      wireBlocks(main, [(el) => {
+        const valeurs = {};
+        el.querySelectorAll('[data-fuel]').forEach((i) => { valeurs[i.dataset.fuel] = readNum(i); });
+        return { path: `${base}/fuel`, body: { valeurs } };
+      }]);
+      return;
+    }
+
+    let units = []; let chefs = [];
+    if (sec === 'fabrication') units = d.fabrication;
+    if (sec === 'four') units = d.four;
+    if (sec === 'preparation') units = d.preparation.unites;
+    if (sec === 'emballage') units = d.emballage;
+    if ((sec === 'fabrication' || sec === 'emballage') && !ro) {
+      try { chefs = await api('/production/chefs'); } catch (e) { chefs = []; }
+      if (P.view !== 'section' || P.section !== sec) return;
+    }
+    const { unit, html } = unitPicker(sec, units);
+    let blocks = ''; const saves = [];
+    const S = (cond, fn) => { if (!ro && cond) saves.push(fn); };
+    const unitUrl = (part) => `${base}/${sec}/${unit.id_unite}/${part}`;
+
+    if (unit && sec === 'fabrication') {
+      const prodOpts = (sel) => `<option value="0">— choisir —</option>` + d.produits.map((p) => `<option value="${p.id}" ${p.id === sel ? 'selected' : ''}>${escapeHtml(p.designation)}</option>`).join('');
+      blocks += block('Production et tonnage', `
+          ${unit.produits.map((p) => pRow(p.designation, pIn(`data-q="${p.id}" data-f="quantite"`, p.quantite, ro))).join('')}
+          <label style="margin-top:14px">Produit fabriqué à chaque heure d'échantillonnage</label>
+          <div class="hours-grid two">${unit.heures.map((h, k) => `<div><span class="muted">H${k + 1}</span><select data-h="${k}" ${ro ? 'disabled' : ''}>${prodOpts(h)}</select></div>`).join('')}</div>
+          <div style="margin-top:12px"><strong>Tonnage : ${fmtQty(unit.tonnage)}</strong> <span class="muted">(calculé à l'enregistrement)</span></div>`,
+      'open', !ro, 'Renseignez d\'abord les mesures horaires (poids sec), elles servent au calcul du tonnage.');
+      S(true, (el) => {
+        const heures = [...el.querySelectorAll('[data-h]')].map((s) => Number(s.value));
+        if (heures.some((h) => !h)) throw new Error("Associez chaque heure d'échantillonnage à un produit.");
+        return { path: unitUrl('produits'), body: { lignes: rowsOf(el, 'q'), heures }, toast: (r) => r.compteurs_modifies ? '✓ Enregistré — compteurs mis à jour (OT préventifs : à lancer depuis le PC)' : '✓ Enregistré' };
+      });
+      blocks += block('Mesures horaires', unit.horaire.map((h) => `
+          <div style="margin-top:10px"><strong style="font-size:.9rem">${escapeHtml(h.designation)}</strong>
+          <div class="hours-grid">${[1, 2, 3, 4, 5, 6, 7, 8].map((k) => `<div><span class="muted">H${k}</span>${pIn(`data-hr="${h.id}" data-f="h${k}"`, h['h' + k], ro)}</div>`).join('')}</div></div>`).join('') || '<div class="empty">Aucune mesure horaire</div>', '', !ro && unit.horaire.length > 0);
+      S(unit.horaire.length > 0, (el) => ({ path: unitUrl('horaire'), body: { lignes: [...new Set([...el.querySelectorAll('[data-hr]')].map((i) => i.dataset.hr))].map((id) => ({ id: Number(id), h: [1, 2, 3, 4, 5, 6, 7, 8].map((k) => readNum(el.querySelector(`[data-hr="${id}"][data-f="h${k}"]`))) })) } }));
+      blocks += block('Qualité', unit.qualite.map((q) => pRow(q.designation, pIn(`data-v="${q.id}"`, q.valeur, ro))).join('') || '<div class="empty">Aucun champ</div>', '', !ro && unit.qualite.length > 0);
+      S(unit.qualite.length > 0, (el) => ({ path: unitUrl('qualite'), body: { lignes: rowsOf(el, 'v') } }));
+      blocks += chefBlock(unit, chefs, ro);
+      S(true, (el) => {
+        const id_cf = Number(el.querySelector('.cf-sel').value);
+        if (!id_cf) throw new Error("Choisissez un chef d'équipe.");
+        return { path: unitUrl('cf'), body: { id_cf } };
+      });
+    }
+
+    if (unit && sec === 'four') {
+      blocks += block('Entrée du four', unit.entree.map((p) => pRow(p.designation, pIn(`data-q="${p.id}" data-f="quantite"`, p.quantite, ro))).join(''), 'open', !ro, 'Quantités entrées (le tonnage se calcule à l\'enregistrement).');
+      S(true, (el) => ({ path: unitUrl('entree'), body: { lignes: rowsOf(el, 'q') } }));
+      blocks += block('Sortie du four', unit.sortie.map((p) => pRow(p.designation, pIn(`data-q="${p.id}" data-f="quantite"`, p.quantite, ro))).join(''), '', !ro);
+      S(true, (el) => ({ path: unitUrl('sortie'), body: { lignes: rowsOf(el, 'q') } }));
+      blocks += block('Mesures du four', unit.champs.map((q) => pRow(q.designation, pIn(`data-v="${q.id}"`, q.valeur, ro))).join('') || '<div class="empty">Aucun champ</div>', '', !ro && unit.champs.length > 0, 'Le poids du four sert au calcul des tonnages d\'entrée et de sortie.');
+      S(unit.champs.length > 0, (el) => ({ path: unitUrl('champs'), body: { lignes: rowsOf(el, 'v') } }));
+    }
+
+    if (unit && sec === 'preparation') {
+      blocks += block('Mesures', unit.qualite.map((q) => pRow(q.designation, pIn(`data-v="${q.id}"`, q.valeur, ro))).join('') || '<div class="empty">Aucun champ</div>', 'open', !ro && unit.qualite.length > 0);
+      S(unit.qualite.length > 0, (el) => ({ path: unitUrl('qualite'), body: { lignes: rowsOf(el, 'v') } }));
+      blocks += block('Valeurs A / S', unit.as.map((q) => `<div class="line-item"><div class="line-name">${escapeHtml(q.designation)}</div><span class="muted">A</span>${pIn(`data-as="${q.id}" data-f="valeur_a"`, q.valeur_a, ro)}<span class="muted">S</span>${pIn(`data-as="${q.id}" data-f="valeur_s"`, q.valeur_s, ro)}</div>`).join('') || '<div class="empty">Aucun champ</div>', '', !ro && unit.as.length > 0);
+      S(unit.as.length > 0, (el) => ({ path: unitUrl('as'), body: { lignes: rowsOf(el, 'as') } }));
+    }
+
+    if (unit && sec === 'emballage') {
+      blocks += block('Produits emballés', unit.produits.map((p) => `
+          <div style="padding:10px 0;border-bottom:1px solid var(--line)"><strong style="font-size:.9rem">${escapeHtml(p.designation)}</strong>
+          <div class="hours-grid three">
+            <div><span class="muted">Quantité</span>${pIn(`data-q="${p.id}" data-f="quantite"`, p.quantite, ro)}</div>
+            <div><span class="muted">Bobines feuillard</span>${pIn(`data-q="${p.id}" data-f="nbr_bobine_feuillard"`, p.nbr_bobine_feuillard, ro)}</div>
+            <div><span class="muted">Palettes</span>${pIn(`data-q="${p.id}" data-f="nbr_pallette"`, p.nbr_pallette, ro)}</div>
+          </div></div>`).join(''), 'open', !ro);
+      S(true, (el) => ({ path: unitUrl('produits'), body: { lignes: rowsOf(el, 'q') } }));
+      blocks += chefBlock(unit, chefs, ro);
+      S(true, (el) => {
+        const id_cf = Number(el.querySelector('.cf-sel').value);
+        if (!id_cf) throw new Error("Choisissez un chef d'équipe.");
+        return { path: unitUrl('cf'), body: { id_cf } };
+      });
+    }
+
+    main.innerHTML = head + html + (unit ? blocks : '') + (unit ? anomalyBlock(d, unit) : '');
+
+    // Préparation "général" belongs to the report, not to a unit.
+    if (sec === 'preparation' && d.preparation.general.length) {
+      const g = block('Général', d.preparation.general.map((q) => pRow(q.designation, pIn(`data-v="${q.id}"`, q.valeur, ro))).join(''), '', !ro);
+      main.insertAdjacentHTML('beforeend', g);
+      S(true, (el) => ({ path: `${base}/preparation/general`, body: { lignes: rowsOf(el, 'v') } }));
+    }
+
+    main.querySelectorAll('#unit-nav button').forEach((b) => {
+      b.onclick = () => { P.unit[sec] = Number(b.dataset.u); renderRapports(); };
+    });
+    wireBlocks(main, saves);
+    wireAnomalies(main);
   }
 
   // ---- Reception tab ---------------------------------------------------

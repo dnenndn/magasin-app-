@@ -42,6 +42,12 @@ function canWriteAtelier(fonction) {
   return !ATELIER_READONLY_ROLES.includes((fonction || '').trim());
 }
 
+// Production reports: in the desktop app the "Rapport" button is hidden for the
+// DGA role only (read-only); everyone else can fill reports.
+function canWriteProduction(fonction) {
+  return canWriteAtelier(fonction);
+}
+
 function isManager(fonction) {
   return MANAGER_ROLES.includes((fonction || '').trim());
 }
@@ -64,5 +70,5 @@ function requireRole(allowedRoles) {
 
 module.exports = {
   ADMIN_ROLES, MANAGER_ROLES, DA_REVIEW_ROLES,
-  isManager, isAdmin, canCreateDa, canCreateDaForOthers, canWriteAtelier, requireRole
+  isManager, isAdmin, canCreateDa, canCreateDaForOthers, canWriteAtelier, canWriteProduction, requireRole
 };
